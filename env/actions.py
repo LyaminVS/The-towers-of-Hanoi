@@ -28,7 +28,7 @@ def get_valid_actions(state: tuple, num_sticks: int) -> list:
     Получить список допустимых действий из текущего состояния.
     
     Учитывает:
-        — только верхний диск на палке можно брать (тот, у кого height=max(heights(from_stick)) где heights(from_stick) высоты дисков, лежащих на from_stick)
+        — stick с которого берут (from_stick) должен быть непустой
         — нельзя класть диск на диск меньшего размера
         — from_stick и to_stick должны быть разными
     
@@ -79,48 +79,12 @@ def is_valid_move(state: tuple, action: tuple) -> bool:
     """
     Проверить, допустим ли ход с точки зрения правил игры.
     
-    Правило: нельзя класть диск на диск меньшего размера.
-    Также: действие должно брать верхний диск (height=max(heights(from_stick)) где heights(from_stick) высоты дисков, лежащих на from_stick) и класть на другую палку.
+    from_stick должен быть не пустой
     
     Input:
         state — текущее состояние ((stick_0, height_0), (stick_1, height_1), ...)
         action — (from_stick, to_stick)
     Output: True если ход допустим, False иначе
     """
-    from_stick, to_stick = action
+    return len([disk_idx for disk_idx, (s, h) in enumerate(state) if s == action[0]]) != 0
 
-    if from_stick == to_stick:
-        return False
-
-    # Диски на исходной палке: (индекс_диска, высота)
-    # Индекс диска: 0 — самый большой, n-1 — самый маленький
-    from_disks = [
-        (disk_idx, height)
-        for disk_idx, (stick, height) in enumerate(state)
-        if stick == from_stick
-    ]
-
-    # Нельзя брать с пустой палки
-    if not from_disks:
-        return False
-
-    # Верхний диск на from_stick — тот, у кого максимальная высота
-    moving_disk_idx, _ = max(from_disks, key=lambda x: x[1])
-
-    # Диски на целевой палке
-    to_disks = [
-        (disk_idx, height)
-        for disk_idx, (stick, height) in enumerate(state)
-        if stick == to_stick
-    ]
-
-    # На пустую палку всегда можно положить
-    if not to_disks:
-        return True
-
-    # Верхний диск на to_stick
-    top_to_disk_idx, _ = max(to_disks, key=lambda x: x[1])
-
-    # Перемещаемый диск должен быть меньше верхнего диска на целевой палке.
-    # Меньший диск имеет больший индекс (disk 0 — самый большой).
-    return moving_disk_idx > top_to_disk_idx
