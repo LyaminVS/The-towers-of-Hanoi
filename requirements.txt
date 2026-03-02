@@ -2,5 +2,8 @@
 # numpy — для массивов и вычислений
 numpy>=1.24.0
 
+# PyTorch — для policy/value сетей и обучения
+torch>=2.0.0
+
 # gymnasium — опционально, если нужен стандартный Gym API
 # gymnasium>=0.29.0
