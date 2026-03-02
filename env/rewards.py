@@ -105,7 +105,7 @@ class Reward:
             if self.use_death_penalty:
                 extra = 0
                 if max_steps is not None and step_number is not None:
-                    extra = step_number - max_steps  # отрицательно: штраф за несхоженные шаги
+                    extra = (step_number - max_steps) * self.reward_step  # отрицательно: штраф за несхоженные шаги
                 total += self.death_penalty + extra
                 return total, True
             total += self.invalid_move
