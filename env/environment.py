@@ -1,8 +1,9 @@
 """
 Среда Tower of Hanoi (Gym-like интерфейс).
 
-State space: [палка каждого диска, высота каждого диска]
+State space: list[(stick, height), ...] — для каждого диска
 Action space: переместить один из верхних дисков на другую палку
+Диск 0 — самый большой (внизу), высота 0 — снизу.
 """
 
 
@@ -92,6 +93,49 @@ class TowerOfHanoiEnv:
         Output: список всех действий [(0,1), (0,2), (1,0), (1,2), (2,0), (2,1)]
         """
         ...
+
+    def get_correct_placement(self, state: list) -> list[bool]:
+        """
+        Сравнение состояния с целевым: все диски на последней палке в правильном порядке.
+        
+        Правильное состояние: на последней палке (индекс num_sticks-1) все диски,
+        диск 0 (самый большой) снизу (height=0), диск 1 выше (height=1), и т.д.
+        Высота измеряется снизу вверх: 0 — нижний блок.
+        
+        Input: state — list[(stick, height), ...]
+        Output: list[bool] — для каждого диска i: True если он в правильной позиции
+        """
+        result = [False] * self.num_disks
+        target_stick = self.num_sticks - 1
+        tower: dict[int, int] = {}
+        for i in range(self.num_disks):
+            stick, height = state[i]
+            if stick == target_stick:
+                tower[height] = i
+        if not tower:
+            return result
+        for h in range(max(tower.keys()) + 1):
+            if h not in tower or tower[h] != h:
+                break
+            result[h] = True
+        return result
+
+    def is_invalid_state(self, state: list) -> bool:
+        """
+        Проверить, что состояние недопустимо: есть диск на меньшем на какой-то палке.
+        Диск 0 — самый большой, высота 0 — снизу.
+        
+        Input: state — list[(stick, height), ...]
+        Output: True если состояние недопустимо (есть диск на меньшем), False если допустимо
+        """
+        for stick in range(self.num_sticks):
+            on_stick = [(i, state[i][1]) for i in range(self.num_disks) if state[i][0] == stick]
+            on_stick.sort(key=lambda x: x[1])
+            disk_ids = [d[0] for d in on_stick]
+            for j in range(len(disk_ids) - 1):
+                if disk_ids[j] > disk_ids[j + 1]:
+                    return True
+        return False
 
 
 def create_env(
