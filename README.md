@@ -45,7 +45,7 @@ RL_proj2/
 ├── agent/               # RL-агенты (policy gradient)
 │   ├── __init__.py
 │   ├── base_agent.py   # Базовый класс
-│   ├── policy.py       # Нейросети: PolicyNetwork, ValueNetwork
+│   ├── policy.py       # Нейросети: PolicyNetwork
 │   ├── reinforce.py   # REINFORCE
 │   ├── reinforce_baseline.py  # REINFORCE + baseline
 │   └── trpo.py         # TRPO
