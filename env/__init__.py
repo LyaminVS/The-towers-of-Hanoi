@@ -5,7 +5,6 @@ from .state import (
     state_to_observation,
     observation_to_state,
     is_terminal_state,
-    get_state_hash,
 )
 from .actions import (
     get_action_space,

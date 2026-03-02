@@ -13,6 +13,7 @@ __pycache__/
 .eggs/
 dist/
 build/
+*.pyc
 
 # IDE
 .idea/
@@ -28,3 +29,7 @@ Thumbs.db
 *.pth
 *.pt
 eval_params.json
+
+
+# Tests
+.pytest_cache/

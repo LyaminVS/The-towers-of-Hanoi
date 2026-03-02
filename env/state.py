@@ -1,67 +1,103 @@
 """
-Представление состояния игры Tower of Hanoi.
+State representation for Tower of Hanoi.
 
-State space: [палка каждого диска, высота каждого диска]
-Диски нумеруются 0..n-1 (0 — самый маленький, n-1 — самый большой).
+State:
+    tuple of pairs (stick, height)
+    ordered from largest disk to smallest disk.
+
+Rules:
+    - height = 0 → disk is at the bottom of its stick
+    - heights on each stick must be consecutive starting from 0
 """
 
+from typing import Tuple, List
+import torch
 
-def get_initial_state(num_disks: int) -> tuple:
-    """
-    Создать начальное состояние: все диски на первой палке (индекс 0).
-    
-    Input:
-        num_disks — количество дисков (положительное целое)
-    Output: кортеж (sticks, heights)
-        sticks — tuple длины num_disks: sticks[i] = индекс палки диска i (0, 1 или 2)
-        heights — tuple длины num_disks: heights[i] = высота диска i на своей палке
-                 (0 = верхний, 1 = второй сверху, и т.д.)
-        Пример для 3 дисков: sticks=(0,0,0), heights=(0,1,2)
-    """
-    ...
+State = Tuple[Tuple[int, int], ...]
 
 
-def state_to_observation(state: tuple) -> tuple:
+def get_initial_state(num_disks: int) -> State:
     """
-    Преобразовать внутреннее состояние в наблюдение для агента/нейросети.
-    
-    Input:
-        state — внутреннее представление (sticks, heights) из get_initial_state
-    Output: observation — формат для нейросети (tuple, list или numpy array)
-            размерность должна быть фиксированной для всех состояний
+    All disks start on stick 0.
+    Largest disk at bottom (height 0).
+    Smallest disk at top.
     """
-    ...
+    if num_disks <= 0:
+        raise ValueError("num_disks must be positive")
+
+    state: List[Tuple[int, int]] = []
+
+    for i in range(num_disks):
+        # disks ordered from largest to smallest
+        height = i  # largest gets 0, next 1, ..., smallest gets num_disks-1
+        state.append((0, height))
+
+    return tuple(state)
 
 
-def observation_to_state(observation) -> tuple:
+def state_to_observation(state: State) -> torch.Tensor:
     """
-    Обратное преобразование наблюдения в внутреннее состояние.
-    
-    Input:
-        observation — наблюдение в формате агента (tuple, array)
-    Output: state — (sticks, heights), совместимое с get_valid_actions, is_terminal_state
+    Convert state into flat torch vector:
+    ((stick_0, height_0), (stick_1, height_1), ...)  → 
+    [stick_0, height_0, stick_1, height_1, ...]
+    No normalization.
     """
-    ...
+
+    obs = []
+
+    for stick, height in state:
+        obs.append(stick)
+        obs.append(height)
+
+    return torch.tensor(obs, dtype=torch.float32)
 
 
-def is_terminal_state(state: tuple, num_disks: int) -> bool:
+def observation_to_state(observation) -> State:
     """
-    Проверить, достигнута ли цель: все диски на третьей палке.
-    
-    Input:
-        state — текущее состояние (sticks, heights)
-        num_disks — количество дисков
-    Output: True если все диски на палке с индексом 2 (третья палка), иначе False
+    Convert flat observation tensor back to state:
+    [stick_0, height_0, stick_1, height_1, ...]
+    → ((stick_0, height_0), (stick_1, height_1), ...)
     """
-    ...
+
+    # если пришёл torch.Tensor
+    if isinstance(observation, torch.Tensor):
+        observation = observation.tolist()
+
+    if len(observation) % 2 != 0:
+        raise ValueError("Observation length must be even.")
+
+    state = []
+
+    for i in range(0, len(observation), 2):
+        stick = int(observation[i])
+        height = int(observation[i + 1])
+        state.append((stick, height))
+
+    return tuple(state)
 
 
-def get_state_hash(state: tuple) -> int | str:
+def is_terminal_state(state: State, num_disks: int) -> bool:
     """
-    Получить хешируемое представление состояния (для Q-таблицы или кэша).
-    
-    Input:
-        state — текущее состояние (sticks, heights)
-    Output: int или str — значение, пригодное для использования как ключ dict/set
+    Terminal iff all disks are on stick 2 AND stacked in the correct order:
+
+    State is ordered from largest to smallest disk.
+    height=0 is the bottom of the stick.
+
+    So terminal state must be:
+        state[i] == (2, i) for all i in 0..num_disks-1
     """
-    ...
+    if len(state) != num_disks:
+        raise ValueError("State length mismatch")
+
+    for i, (stick, height) in enumerate(state):
+        if stick != 2:
+            return False
+        if height != i:
+            return False
+
+    return True
+
+
+
+
+
