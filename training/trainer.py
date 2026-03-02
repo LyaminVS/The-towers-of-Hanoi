@@ -31,7 +31,7 @@ def run_episode(env, agent, max_steps: int, use_death_penalty: bool = False, ran
     success = info.get("is_correct_placement", 0) == env.num_disks
     return total_reward, info["step_count"], success, rewards, update_metrics
 
-def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=False, log_interval=100, random_init=False):
+def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=False, log_interval=100, random_init=False, checkpoint_interval=1000):
     gamma = agent.config.get("discount_factor", 0.99)
     history = [] # Сюда собираем всё
 
@@ -71,5 +71,11 @@ def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=Fal
                 loss=update_metrics.get("policy_loss", 0) if update_metrics else 0,
                 entropy=update_metrics.get("entropy", 0) if update_metrics else 0,
             )
+        
+        # Сохранять модель каждые checkpoint_interval эпизодов
+        if (ep + 1) % checkpoint_interval == 0:
+            checkpoint_path = f"model_checkpoint_{ep + 1}.pth"
+            agent.save(checkpoint_path)
+            log_message(f"Checkpoint saved: {checkpoint_path}")
 
     return history # Возвращаем накопленные данные

@@ -32,11 +32,12 @@ def parse_args() -> object:
                         help="Визуализировать ход агента (Pygame)")
     parser.add_argument("--delay_ms", type=int, default=400,
                         help="Задержка между шагами при --render (мс)")
+    parser.add_argument("--sample", action="store_true", help="Использовать сэмплирование при оценке вместо argmax")
     parser.add_argument("--save_results", type=str, default=settings.EVAL_SAVE_RESULTS)
     return parser.parse_args()
 
 
-def evaluate(env, agent, num_episodes: int = 10, render: bool = False, delay_ms: int = 400) -> dict:
+def evaluate(env, agent, num_episodes: int = 10, render: bool = False, delay_ms: int = 400, sample: bool = False) -> dict:
     """
     Оценка обученного агента без exploration (greedy действия).
     
@@ -84,7 +85,9 @@ def evaluate(env, agent, num_episodes: int = 10, render: bool = False, delay_ms:
                             }
                     renderer.clock.tick(60)
 
-            action, _ = agent.select_action(observation, valid_actions, training=False)
+            # training flag controls sampling vs greedy inside select_action
+            use_sampling = sample or settings.EVAL_SAMPLE
+            action, _ = agent.select_action(observation, valid_actions, training=use_sampling)
             observation, reward, terminated, truncated, info = env.step(action)
 
             total_reward += reward
@@ -148,6 +151,7 @@ def main() -> None:
         num_episodes=args.num_episodes,
         render=args.render,
         delay_ms=args.delay_ms,
+        sample=args.sample,
     )
 
     print(f"\n=== Results ===")

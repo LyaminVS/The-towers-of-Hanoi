@@ -15,7 +15,24 @@ from training.trainer import train
 from training.logger import setup_logger, log_message
 from utils.params import save_history
 
+def parse_args() -> object:
+    parser = argparse.ArgumentParser(description="Train Tower of Hanoi agent")
+    parser.add_argument("--num_episodes", type=int, default=settings.NUM_EPISODES,
+                        help="Number of episodes to run")
+    parser.add_argument("--max_steps", type=int, default=settings.MAX_STEPS_PER_EPISODE,
+                        help="Step limit per episode")
+    parser.add_argument("--random_init", action="store_true", default=settings.RANDOM_INIT,
+                        help="Start each episode from a random valid state")
+    parser.add_argument("--no-random_init", action="store_false", dest="random_init",
+                        help="Disable random initialization")
+    parser.add_argument("--checkpoint_interval", type=int, default=settings.CHECKPOINT_INTERVAL,
+                        help="Episodes between checkpoints")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
     # 1. Настройка логгера (из settings.py)
     setup_logger(
         log_file=settings.LOG_FILE,
@@ -30,7 +47,7 @@ def main():
     env = create_env(
         num_disks=settings.NUM_DISKS,
         num_sticks=settings.NUM_STICKS,
-        max_steps=settings.MAX_STEPS_PER_EPISODE,
+        max_steps=args.max_steps,
         reward=reward_scheme
     )
     
@@ -56,11 +73,12 @@ def main():
         history = train(
             env=env,
             agent=agent,
-            num_episodes=settings.NUM_EPISODES,
-            max_steps_per_episode=settings.MAX_STEPS_PER_EPISODE,
+            num_episodes=args.num_episodes,
+            max_steps_per_episode=args.max_steps,
             use_death_penalty=settings.USE_DEATH_PENALTY,
             log_interval=settings.LOG_INTERVAL,
-            random_init=getattr(settings, "RANDOM_INIT", True),
+            random_init=args.random_init,
+            checkpoint_interval=args.checkpoint_interval,
         )
         
         # 5. Сохранение результатов

@@ -82,13 +82,14 @@ class TowerOfHanoiEnv:
             truncated — True если step_count >= max_steps
             info — dict: is_invalid, is_correct_placement, step_count, state, ...
         """
-        # Проверка допустимости хода (actions.is_valid_move: from_stick не пуста и т.д.)
+        # Проверка допустимости хода (from_stick не пустой)
         state_tuple = tuple(self._state)
+        is_invalid = False
         if not is_valid_move(state_tuple, action):
-            # Пустая from_stick или недопустимый ход — состояние не меняется, is_invalid=False
-            is_invalid = False
+            # попытка хода с пустой палки — считается invalid, состояние не меняется
+            is_invalid = True
         else:
-            # Применение хода: берём верхний диск с from_stick, кладём на to_stick
+            # Применение хода на копии состояния
             from_stick, to_stick = action
             from_disks = [
                 (i, self._state[i][1])
@@ -103,23 +104,28 @@ class TowerOfHanoiEnv:
             ]
             new_height = (max(h for _, h in to_disks) + 1) if to_disks else 0
 
-            new_state = [list(p) for p in self._state]
-            new_state[moving_disk_idx] = [to_stick, new_height]
-            self._state = [tuple(p) for p in new_state]
-            # Проверка: не положили ли больший диск на меньший
-            is_invalid = self.is_invalid_state(self._state)
+            candidate = [list(p) for p in self._state]
+            candidate[moving_disk_idx] = [to_stick, new_height]
+            new_state = [tuple(p) for p in candidate]
+
+            # Проверка недопустимости: большой диск на меньший
+            if self.is_invalid_state(new_state):
+                is_invalid = True
+                # не обновляем self._state, остаёмся в прежнем состоянии
+            else:
+                self._state = new_state
 
         # Обновление счётчика и вычисление награды
         self._step_count += 1
         is_correct_placement = self.get_correct_placement(self._state)
+        goal_reached = all(is_correct_placement)
+        correct_count = sum(is_correct_placement)
         reward, reward_done = self.reward.compute(
             is_invalid,
-            is_correct_placement,
-            max_steps=self.max_steps,
-            step_number=self._step_count,
+            goal_reached,
+            correct_count=correct_count,
         )
-        # Завершение: цель достигнута, смерть (invalid + death_penalty) или лимит шагов
-        goal_reached = all(is_correct_placement)
+        # Завершение: цель достигнута или лимит шагов
         terminated = goal_reached or reward_done
         truncated = self._step_count >= self.max_steps
 
