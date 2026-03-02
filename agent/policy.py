@@ -86,3 +86,25 @@ class PolicyNetwork(nn.Module):
         probs = log_probs.exp()
         entropy = -(probs * log_probs).sum(dim=-1)
         return entropy
+
+
+class ValueNetwork(nn.Module):
+    """
+    Сеть оценки V(s). Вход — state, выход — один скаляр (ожидаемый return).
+    """
+
+    def __init__(self, observation_dim: int, hidden_dims: list):
+        super().__init__()
+        dims = [observation_dim] + list(hidden_dims) + [1]
+        layers = []
+        for i in range(len(dims) - 1):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            if i < len(dims) - 2:
+                layers.append(nn.ReLU())
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, state):
+        """state -> V(s), shape (batch,) или (batch, 1)."""
+        state = _to_tensor(state, device=next(self.parameters()).device)
+        out = self.mlp(state)
+        return out.squeeze(-1)
