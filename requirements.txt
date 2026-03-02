@@ -8,3 +8,5 @@ torch>=2.0.0
 # gymnasium — опционально, если нужен стандартный Gym API
 # gymnasium>=0.29.0
 matplotlib
+Pillow>=9.0.0
+pygame>=2.0.0

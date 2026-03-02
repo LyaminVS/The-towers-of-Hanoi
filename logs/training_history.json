@@ -1,0 +1,12 @@
+[
+    {
+        "episode": 1,
+        "reward": -8.0,
+        "steps": 4,
+        "success": 0,
+        "discounted_return": -7.821595,
+        "policy_loss": -10.865641593933105,
+        "entropy": NaN,
+        "mean_return": -7.821595
+    }
+]

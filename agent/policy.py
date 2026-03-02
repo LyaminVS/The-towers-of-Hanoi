@@ -52,7 +52,7 @@ class PolicyNetwork(nn.Module):
         logits = self.mlp(state)
         if valid_actions_mask is not None:
             mask = _to_tensor(valid_actions_mask, device=logits.device, dtype=torch.bool)
-            logits = torch.where(mask, logits, torch.tensor(float("-inf"), device=logits.device))
+            logits = torch.where(mask, logits, torch.tensor(-1e9, dtype=logits.dtype, device=logits.device))
         return logits
 
     def get_log_probs(self, state, action_indices, valid_actions_mask=None):

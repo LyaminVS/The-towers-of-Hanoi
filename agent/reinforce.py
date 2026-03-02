@@ -38,6 +38,7 @@ class REINFORCEAgent(BaseAgent):
             lr=config.get("learning_rate", 1e-3),
         )
         self.gamma = config.get("discount_factor", 0.99)
+        self.entropy_coef = config.get("entropy_coef", 0.01)
         self.value_network = None
         self.saved_valid_actions: list = []
         self._last_valid_actions: list = []
@@ -92,6 +93,7 @@ class REINFORCEAgent(BaseAgent):
         returns_t = torch.tensor(returns, dtype=torch.float32, device=device)
 
         policy_loss = 0.0
+        entropy_sum = 0.0
         n = len(self.saved_states)
         for t in range(n):
             state = self.saved_states[t]
@@ -103,12 +105,16 @@ class REINFORCEAgent(BaseAgent):
             mask_batch = mask.unsqueeze(0)
             log_prob = self.policy_network.get_log_probs(state_t, [action_idx], mask_batch).squeeze(0)
             policy_loss = policy_loss - (returns_t[t] * log_prob).sum()
+            entropy_sum = entropy_sum + self.policy_network.get_entropy(state_t, mask_batch).sum()
         policy_loss = policy_loss / max(n, 1)
+        mean_entropy = entropy_sum / max(n, 1)
+
+        total_loss = policy_loss - self.entropy_coef * mean_entropy
 
         self.policy_optimizer.zero_grad()
-        policy_loss.backward()
+        total_loss.backward()
         self.policy_optimizer.step()
 
         mean_return = returns[0] if returns else 0.0
         self.reset_trajectory()
-        return {"policy_loss": policy_loss.item(), "mean_return": mean_return}
+        return {"policy_loss": policy_loss.item(), "entropy": mean_entropy.item(), "mean_return": mean_return}

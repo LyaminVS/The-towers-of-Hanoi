@@ -11,9 +11,36 @@ Rules:
 """
 
 from typing import Tuple, List
+import random
 import torch
 
 State = Tuple[Tuple[int, int], ...]
+
+
+def get_random_valid_state(num_disks: int, num_sticks: int = 3, exclude_terminal: bool = True) -> State:
+    """
+    Случайное валидное состояние: диски случайно распределены по палкам,
+    на каждой палке — правильный порядок (больший снизу).
+    State[i] = (stick, height) для диска i.
+    exclude_terminal — не возвращать целевое состояние (все на последней палке)
+    """
+    if num_disks <= 0:
+        raise ValueError("num_disks must be positive")
+    for _ in range(100):
+        sticks: List[List[int]] = [[] for _ in range(num_sticks)]
+        for disk_id in range(num_disks):
+            stick = random.randint(0, num_sticks - 1)
+            sticks[stick].append(disk_id)
+        state: List[Tuple[int, int]] = [None] * num_disks
+        for stick_idx, disk_ids in enumerate(sticks):
+            disk_ids.sort()
+            for height, disk_id in enumerate(disk_ids):
+                state[disk_id] = (stick_idx, height)
+        s = tuple(state)
+        if exclude_terminal and is_terminal_state(s, num_disks):
+            continue
+        return s
+    return get_initial_state(num_disks)
 
 
 def get_initial_state(num_disks: int) -> State:

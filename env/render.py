@@ -101,6 +101,10 @@ class PygameRenderer:
 
         pygame.display.flip()
 
+    def get_surface_bytes(self) -> bytes:
+        """Вернуть текущий кадр как RGB bytes для сохранения в GIF/PNG."""
+        return pygame.image.tostring(self.screen, "RGB", False)
+
     def get_human_action(self, state, steps, reward, valid_actions, initial_msg):
         selected = None
         message = initial_msg

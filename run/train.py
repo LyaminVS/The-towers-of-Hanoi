@@ -44,6 +44,7 @@ def main():
         "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
+        "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF", 0.01),
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
     }
@@ -58,7 +59,8 @@ def main():
             num_episodes=settings.NUM_EPISODES,
             max_steps_per_episode=settings.MAX_STEPS_PER_EPISODE,
             use_death_penalty=settings.USE_DEATH_PENALTY,
-            log_interval=settings.LOG_INTERVAL
+            log_interval=settings.LOG_INTERVAL,
+            random_init=getattr(settings, "RANDOM_INIT", True),
         )
         
         # 5. Сохранение результатов

@@ -3,12 +3,12 @@ import torch
 from env.actions import get_valid_actions
 from training.logger import log_episode, log_message
 
-def run_episode(env, agent, max_steps: int, use_death_penalty: bool = False):
+def run_episode(env, agent, max_steps: int, use_death_penalty: bool = False, random_init: bool = False):
     env.reward.use_death_penalty = use_death_penalty
     env.max_steps = max_steps
     agent.reset_trajectory()
 
-    observation, info = env.reset()
+    observation, info = env.reset(random_init=random_init)
     total_reward = 0.0
     rewards = []
 
@@ -31,13 +31,13 @@ def run_episode(env, agent, max_steps: int, use_death_penalty: bool = False):
     success = info.get("is_correct_placement", 0) == env.num_disks
     return total_reward, info["step_count"], success, rewards, update_metrics
 
-def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=False, log_interval=100):
+def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=False, log_interval=100, random_init=False):
     gamma = agent.config.get("discount_factor", 0.99)
     history = [] # Сюда собираем всё
 
     for ep in range(num_episodes):
         total_reward, num_steps, success, rewards, update_metrics = run_episode(
-            env, agent, max_steps_per_episode, use_death_penalty
+            env, agent, max_steps_per_episode, use_death_penalty, random_init=random_init
         )
         
         # Считаем дисконтированную награду для графиков (G_0)
@@ -68,7 +68,8 @@ def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=Fal
                 steps=int(sum(h["steps"] for h in recent) / log_interval),
                 success=success_rate > 0.5,
                 success_rate=f"{success_rate:.1%}",
-                loss=update_metrics.get("policy_loss", 0) if update_metrics else 0
+                loss=update_metrics.get("policy_loss", 0) if update_metrics else 0,
+                entropy=update_metrics.get("entropy", 0) if update_metrics else 0,
             )
 
     return history # Возвращаем накопленные данные
