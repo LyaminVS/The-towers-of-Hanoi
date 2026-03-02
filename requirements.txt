@@ -7,3 +7,4 @@ torch>=2.0.0
 
 # gymnasium — опционально, если нужен стандартный Gym API
 # gymnasium>=0.29.0
+matplotlib
