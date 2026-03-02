@@ -22,6 +22,7 @@ class PygameRenderer:
     TEXT_COLOR = (220, 220, 220)
     HIGHLIGHT_COLOR = (255, 215, 0)  # Золотой для выделения
     ERROR_COLOR = (255, 100, 100)
+    SUCCESS_COLOR = (100, 255, 100)
 
     def __init__(self, num_disks: int, num_sticks: int = 3):
         self.num_disks = num_disks
@@ -53,19 +54,14 @@ class PygameRenderer:
         """Генерирует красивый градиент цветов для дисков (от красного к фиолетовому)."""
         colors = []
         for i in range(num_colors):
-            hue = i / max(1, (num_colors - 1)) * 0.8  # От 0 до 0.8 по HSV
+            hue = i / max(1, (num_colors - 1)) * 0.8
             r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 0.9)
             colors.append((int(r * 255), int(g * 255), int(b * 255)))
         return colors
 
-    def render(self, state: tuple, step_count: int, selected_stick: int = None, message: str = ""):
+    def render(self, state: tuple, step_count: int, total_reward: float, selected_stick: int = None, message: str = ""):
         """
         Отрисовать текущее состояние.
-        Input:
-            state — tuple ((stick_0, height_0), ...)
-            step_count — количество шагов
-            selected_stick — индекс палки, которую выбрал игрок (для подсветки)
-            message — текст ошибки или подсказки
         """
         self.screen.fill(self.BG_COLOR)
 
@@ -95,15 +91,12 @@ class PygameRenderer:
             text = self.font.render(str(i + 1), True, self.TEXT_COLOR)
             self.screen.blit(text, (stick_x - text.get_width() // 2, self.height - 40))
 
-        # Рисуем диски (обратный порядок, чтобы большие рисовались первыми)
-        # Диск 0 — самый большой (в state.py)
+        # Рисуем диски (0 — самый большой)
         for disk_idx, (stick, height) in enumerate(state):
-            # Ширина зависит от размера (0 - самый широкий)
             width_step = (self.max_disk_width - self.min_disk_width) / max(1, self.num_disks - 1)
             disk_width = self.max_disk_width - (disk_idx * width_step)
             
             center_x = self._get_stick_center_x(stick)
-            # Y координата (снизу вверх)
             y = self.height - self.base_height - 50 - (height + 1) * self.disk_height
 
             rect = pygame.Rect(0, 0, disk_width, self.disk_height - 2)
@@ -111,12 +104,19 @@ class PygameRenderer:
 
             pygame.draw.rect(self.screen, self.disk_colors[disk_idx], rect, border_radius=12)
 
-        # Текстовая информация (Счетчик шагов и сообщения)
-        steps_text = self.font.render(f"Steps: {step_count}", True, self.TEXT_COLOR)
-        self.screen.blit(steps_text, (20, 20))
+        # Текстовая информация (Шаги и Награда)
+        info_text = self.font.render(f"Steps: {step_count}   |   Score: {total_reward:.1f}", True, self.TEXT_COLOR)
+        self.screen.blit(info_text, (20, 20))
 
+        # Сообщения (Ошибки, Подсказки)
         if message:
-            msg_color = self.ERROR_COLOR if "Invalid" in message else self.HIGHLIGHT_COLOR
+            if "Invalid" in message or "Penalty" in message:
+                msg_color = self.ERROR_COLOR
+            elif "Reward" in message or "Good" in message or "Perfect" in message:
+                msg_color = self.SUCCESS_COLOR
+            else:
+                msg_color = self.HIGHLIGHT_COLOR
+            
             msg_text = self.font.render(message, True, msg_color)
             self.screen.blit(msg_text, (self.width // 2 - msg_text.get_width() // 2, 20))
 
@@ -127,84 +127,78 @@ class PygameRenderer:
         pygame.display.flip()
 
     def _get_stick_center_x(self, stick_idx: int) -> int:
-        """Возвращает X-координату центра палки."""
         return int((stick_idx + 0.5) * self.stick_spacing)
 
-    def get_human_action(self, state: tuple, step_count: int, valid_actions: list) -> tuple:
+    def get_human_action(self, state: tuple, step_count: int, total_reward: float, valid_actions: list, initial_message: str = "") -> tuple:
         """
         Игровой цикл ожидания хода от человека.
-        Обрабатывает клики мыши и нажатия кнопок 1, 2, 3.
-        Возвращает (from_stick, to_stick).
         """
         selected_stick = None
-        message = ""
+        message = initial_message
 
         while True:
-            self.render(state, step_count, selected_stick, message)
+            self.render(state, step_count, total_reward, selected_stick, message)
             self.clock.tick(60)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    return None  # Сигнал к выходу
+                    return None
                 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         return None
                     
-                    # Управление клавиатурой (1, 2, 3)
                     stick_clicked = None
                     if event.key in (pygame.K_1, pygame.K_KP1): stick_clicked = 0
                     if event.key in (pygame.K_2, pygame.K_KP2): stick_clicked = 1
                     if event.key in (pygame.K_3, pygame.K_KP3): stick_clicked = 2
 
                     if stick_clicked is not None:
-                        res, selected_stick, message = self._process_selection(
-                            stick_clicked, selected_stick, valid_actions
-                        )
+                        res, selected_stick, message = self._process_selection(stick_clicked, selected_stick, valid_actions)
                         if res is not None:
                             return res
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    # Управление мышью (определение по координате X)
                     mouse_x, _ = pygame.mouse.get_pos()
                     stick_clicked = mouse_x // self.stick_spacing
                     
                     if 0 <= stick_clicked < self.num_sticks:
-                        res, selected_stick, message = self._process_selection(
-                            stick_clicked, selected_stick, valid_actions
-                        )
+                        res, selected_stick, message = self._process_selection(stick_clicked, selected_stick, valid_actions)
                         if res is not None:
                             return res
 
     def _process_selection(self, stick_clicked: int, selected_stick: int, valid_actions: list):
-        """Внутренняя логика выделения палок."""
         if selected_stick is None:
-            # Пытаемся взять с пустой палки?
-            # Проверим, есть ли доступные действия с этой палки
+            # Проверяем, есть ли на палке диски (можно ли сделать ход с неё)
             if any(action[0] == stick_clicked for action in valid_actions):
                 return None, stick_clicked, "Select target stick..."
             else:
                 return None, None, "Invalid! Stick is empty."
         else:
-            # Если кликнули на ту же палку — отмена выделения
             if selected_stick == stick_clicked:
                 return None, None, "Selection canceled."
             
-            # Попытка сделать ход
             action = (selected_stick, stick_clicked)
+            # Если ход в списке доступных (в среде он доступен, даже если диск больше — это даст штраф)
             if action in valid_actions:
                 return action, None, ""
             else:
-                return None, None, "Invalid move! Can't put larger disk on smaller."
+                return None, None, "Invalid target!"
 
-    def show_victory(self, steps: int):
-        """Экран победы."""
+    def show_end_screen(self, steps: int, total_reward: float, is_victory: bool):
+        """Экран конца игры (Победа или Смерть)."""
         self.screen.fill(self.BG_COLOR)
-        vic_text = self.font.render(f"VICTORY in {steps} steps!", True, self.HIGHLIGHT_COLOR)
+        
+        main_text = f"VICTORY in {steps} steps!" if is_victory else "GAME OVER!"
+        color = self.SUCCESS_COLOR if is_victory else self.ERROR_COLOR
+        
+        vic_text = self.font.render(main_text, True, color)
+        score_text = self.font.render(f"Final Score: {total_reward:.1f}", True, self.HIGHLIGHT_COLOR)
         close_text = self.small_font.render("Press any key or click to exit...", True, self.TEXT_COLOR)
         
-        self.screen.blit(vic_text, (self.width // 2 - vic_text.get_width() // 2, self.height // 2 - 20))
-        self.screen.blit(close_text, (self.width // 2 - close_text.get_width() // 2, self.height // 2 + 30))
+        self.screen.blit(vic_text, (self.width // 2 - vic_text.get_width() // 2, self.height // 2 - 40))
+        self.screen.blit(score_text, (self.width // 2 - score_text.get_width() // 2, self.height // 2))
+        self.screen.blit(close_text, (self.width // 2 - close_text.get_width() // 2, self.height // 2 + 50))
         pygame.display.flip()
 
         waiting = True
@@ -216,4 +210,3 @@ class PygameRenderer:
 
     def close(self):
         pygame.quit()
-

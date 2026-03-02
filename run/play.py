@@ -7,10 +7,10 @@ import sys
 import argparse
 from pathlib import Path
 
-# Добавляем корень проекта в sys.path, чтобы работали импорты env, utils и т.д.
+# Добавляем корень проекта в sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from env.state import get_initial_state, is_terminal_state
+from env.environment import create_env
 from env.actions import get_valid_actions
 from env.render import PygameRenderer
 
@@ -18,82 +18,78 @@ from env.render import PygameRenderer
 def parse_args():
     """Парсинг аргументов командной строки."""
     parser = argparse.ArgumentParser(description="Play Tower of Hanoi manually.")
-    parser.add_argument("--num_disks", type=int, default=3, help="Number of disks to play with (default: 3)")
+    parser.add_argument("--num_disks", type=int, default=3, help="Number of disks (default: 3)")
     return parser.parse_args()
-
-
-def manual_step(state: tuple, action: tuple) -> tuple:
-    """
-    Ручное выполнение шага (изменение состояния).
-    Переносит верхний диск с from_stick на to_stick.
-    Эта функция эмулирует env.step(), пока environment.py не написан.
-    """
-    from_stick, to_stick = action
-    
-    # Ищем все диски на from_stick и to_stick
-    from_disks = [(idx, h) for idx, (s, h) in enumerate(state) if s == from_stick]
-    to_disks = [(idx, h) for idx, (s, h) in enumerate(state) if s == to_stick]
-    
-    # Находим верхний диск на from_stick
-    moving_disk_idx, _ = max(from_disks, key=lambda x: x[1])
-    
-    # Вычисляем новую высоту на to_stick
-    new_height = 0
-    if to_disks:
-        new_height = max(to_disks, key=lambda x: x[1])[1] + 1
-
-    # Создаем новое состояние
-    new_state = list(state)
-    new_state[moving_disk_idx] = (to_stick, new_height)
-    
-    return tuple(new_state)
 
 
 def main():
     args = parse_args()
     num_disks = args.num_disks
-    num_sticks = 3
 
     print(f"Starting Tower of Hanoi with {num_disks} disks.")
     print("Controls: Click on sticks using mouse, or press 1, 2, 3 on keyboard.")
 
-    # Инициализация состояния и рендерера
-    state = get_initial_state(num_disks)
-    renderer = PygameRenderer(num_disks=num_disks, num_sticks=num_sticks)
+    # Используем настоящую среду
+    env = create_env(num_disks=num_disks, num_sticks=3)
+    renderer = PygameRenderer(num_disks=num_disks, num_sticks=3)
     
-    step_count = 0
+    # Первый сброс
+    obs, info = env.reset()
+    state = info["state"]
+    step_count = info["step_count"]
+    
+    total_reward = 0.0
+    message = "Game Started! Make your move."
 
     try:
         while True:
-            # Получаем все доступные ходы для текущего состояния (из actions.py)
-            valid_actions = get_valid_actions(state, num_sticks)
+            # Получаем доступные ходы
+            valid_actions = get_valid_actions(tuple(state), env.num_sticks)
 
-            # Передаем управление рендереру (ожидает клика мыши или клавиатуры)
-            action = renderer.get_human_action(state, step_count, valid_actions)
+            # Рендер и ожидание клика пользователя
+            action = renderer.get_human_action(tuple(state), step_count, total_reward, valid_actions, message)
 
-            # Если пользователь закрыл окно или нажал ESC
             if action is None:
-                print("\nGame exited.")
+                print("\nGame exited by user.")
                 break
 
-            # Выполняем действие
-            state = manual_step(state, action)
-            step_count += 1
+            # Делаем шаг в настоящей среде
+            obs, reward, terminated, truncated, info = env.step(action)
+            total_reward += reward
+            
+            # === ИСПОЛЬЗУЕМ ВСЁ ИЗ INFO ===
+            state = info["state"]
+            step_count = info["step_count"]
+            is_invalid = info["is_invalid"]
+            correct_count = info["is_correct_placement"]
 
-            # Проверка на победу (из state.py)
-            if is_terminal_state(state, num_disks):
-                renderer.render(state, step_count, message="Perfect!")
-                renderer.show_victory(step_count)
-                print(f"\nVictory! You solved it in {step_count} steps.")
+            # Формируем динамическое сообщение на основе info от среды
+            if is_invalid:
+                message = f"Invalid Move! Penalty! (Reward: {reward:.1f})"
+            else:
+                message = f"Nice! {correct_count}/{num_disks} disks placed correctly. (Reward: {reward:.1f})"
+
+            # Проверка конца эпизода (Победа или смерть от штрафов)
+            if terminated or truncated:
+                # Если все диски в правильной позиции — это победа
+                is_victory = (correct_count == num_disks)
                 
-                # Минимально возможное число шагов: 2^n - 1
-                min_steps = (2 ** num_disks) - 1
-                if step_count == min_steps:
-                    print("Awesome! You found the optimal path!")
+                final_msg = "Perfect! Target reached!" if is_victory else "Game Over! (Terminated/Truncated)"
+                
+                # Последний раз рисуем финальный кадр
+                renderer.render(tuple(state), step_count, total_reward, message=final_msg)
+                
+                # Показываем финальный экран
+                renderer.show_end_screen(step_count, total_reward, is_victory)
+                
+                if is_victory:
+                    print(f"\nVictory! Solved in {step_count} steps. Score: {total_reward}")
+                else:
+                    print(f"\nGame Over. Score: {total_reward}")
                 break
 
     except KeyboardInterrupt:
-        print("\nGame interrupted by user.")
+        print("\nGame interrupted by user (Ctrl+C).")
     finally:
         renderer.close()
 
