@@ -1,23 +1,17 @@
-"""RL-агенты (policy gradient методы)."""
-from .base_agent import BaseAgent
-from .policy import PolicyNetwork, ValueNetwork
+# FILE: ./agent/__init__.py
 from .reinforce import REINFORCEAgent
 from .reinforce_baseline import REINFORCEBaselineAgent
 from .trpo import TRPOAgent
 
-AGENT_METHODS = ("reinforce", "reinforce_baseline", "trpo")
-
-
-def create_agent(method: str, observation_dim: int, action_space: list, config: dict) -> BaseAgent:
-    """
-    Фабрика: создать агента по имени метода.
+def create_agent(agent_method, observation_dim, action_space, config):
+    """Фабрика для создания агента по названию метода."""
+    agents = {
+        "reinforce": REINFORCEAgent,
+        "reinforce_baseline": REINFORCEBaselineAgent,
+        "trpo": TRPOAgent
+    }
     
-    Input:
-        method — "reinforce" | "reinforce_baseline" | "trpo"
-        observation_dim — размерность наблюдения
-        action_space — список действий из env.get_action_space()
-        config — словарь гиперпараметров (из config.settings или переопределённые)
-    Output: экземпляр BaseAgent (REINFORCEAgent, REINFORCEBaselineAgent или TRPOAgent)
-    Raises: ValueError если method не в AGENT_METHODS
-    """
-    ...
+    if agent_method not in agents:
+        raise ValueError(f"Unknown agent method: {agent_method}")
+        
+    return agents[agent_method](observation_dim, action_space, config)

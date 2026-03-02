@@ -1,34 +1,20 @@
-"""
-Сохранение и загрузка параметров оценки (CSV).
-"""
+# FILE: ./utils/params.py
+import json
+import os
 
+def save_eval_params(path: str, params: dict) -> None:
+    """Сохранить параметры оценки в JSON файл."""
+    try:
+        # Убеждаемся, что директория существует
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(params, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving params to {path}: {e}")
 
-def save_params(path: str, params: dict) -> None:
-    """
-    Сохранить параметры оценки в файл (CSV).
-    
-    Input:
-        path — путь к файлу (например "eval_params.json")
-        params — словарь с параметрами оценки:
-            model_path (str) — путь к файлу модели
-            num_episodes (int) — количество эпизодов для оценки
-            render (bool) — визуализировать ли ход
-            num_disks (int) — количество дисков
-            agent_method (str) — метод агента
-            save_results (str | None) — путь для сохранения результатов
-    Output: None
-    Raises: IOError при ошибке записи
-    """
-    ...
-
-
-def load_params(path: str) -> dict:
-    """
-    Загрузить параметры оценки из JSON-файла.
-    
-    Input:
-        path — путь к файлу с сохранёнными параметрами
-    Output: dict с ключами model_path, num_episodes, render, num_disks, agent_method, ...
-    Raises: FileNotFoundError если файл не найден, json.JSONDecodeError при ошибке парсинга
-    """
-    ...
+def load_eval_params(path: str) -> dict:
+    """Загрузить параметры оценки из JSON файла."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Params file not found: {path}")
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
