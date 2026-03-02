@@ -10,7 +10,7 @@ class Reward:
     Настраиваемая схема наград для среды Tower of Hanoi.
     
     Атрибуты (можно менять при создании или через конфиг):
-        step — награда за каждый шаг (штраф за длину пути)
+        reward_step — награда за каждый шаг (штраф за длину пути)
         invalid_move — штраф за недопустимый ход (диск на меньший)
         correct_placement — бонус за правильное размещение на 3-й палке
         death_penalty — большой штраф при нарушении (если use_death_penalty)
@@ -20,7 +20,7 @@ class Reward:
 
     def __init__(
         self,
-        step: float = -1.0,
+        reward_step: float = -1.0,
         invalid_move: float = -10.0,
         correct_placement: float = 10.0,
         death_penalty: float = -100.0,
@@ -31,7 +31,7 @@ class Reward:
         Создать схему наград с заданными параметрами.
         
         Input:
-            step — награда за каждый шаг (отрицательная = штраф за длину пути)
+            reward_step — награда за каждый шаг (отрицательная = штраф за длину пути)
             invalid_move — штраф за недопустимый ход (диск положен на меньший)
             correct_placement — бонус за размещение диска в правильной позиции
                                на третьей палке (по порядку снизу вверх)
@@ -42,7 +42,12 @@ class Reward:
                                и эпизод завершается (done=True)
         Output: —
         """
-        ...
+        self.reward_step = reward_step
+        self.invalid_move = invalid_move
+        self.correct_placement = correct_placement
+        self.death_penalty = death_penalty
+        self.use_correct_placement = use_correct_placement
+        self.use_death_penalty = use_death_penalty
 
     @classmethod
     def from_config(cls, config: dict) -> "Reward":
@@ -55,21 +60,55 @@ class Reward:
                     USE_CORRECT_PLACEMENT, USE_DEATH_PENALTY
         Output: экземпляр Reward
         """
-        ...
+        def _get(key: str, default):
+            if isinstance(config, dict):
+                return config.get(key, default)
+            return getattr(config, key, default)
 
-    def compute(self, is_invalid: bool, is_correct_placement: bool) -> tuple[float, bool]:
+        return cls(
+            reward_step=_get("REWARD_STEP", -1.0),
+            invalid_move=_get("REWARD_INVALID_MOVE", -10.0),
+            correct_placement=_get("REWARD_CORRECT_PLACEMENT", 10.0),
+            death_penalty=_get("REWARD_DEATH", -100.0),
+            use_correct_placement=_get("USE_CORRECT_PLACEMENT", True),
+            use_death_penalty=_get("USE_DEATH_PENALTY", False),
+        )
+
+    def compute(
+        self,
+        is_invalid: bool,
+        is_correct_placement: list[bool],
+        max_steps: int | None = None,
+        step_number: int | None = None,
+    ) -> tuple[float, bool]:
         """
         Вычислить суммарную награду за шаг.
         
-        Формула: total = step + (death_penalty если is_invalid и use_death_penalty,
-                иначе invalid_move если is_invalid) + (correct_placement если
-                is_correct_placement и use_correct_placement)
+        Формула: total = reward_step + (death_penalty + (max_steps - step_number) если
+                is_invalid и use_death_penalty — штраф за несхоженные шаги,
+                иначе invalid_move если is_invalid + correct_placement * count
+                для каждого True в is_correct_placement
         
         Input:
             is_invalid — был ли ход недопустимым (диск на меньший)
-            is_correct_placement — было ли правильное размещение на 3-й палке
+            is_correct_placement — list[bool]: для каждого диска — в правильной
+                                  ли позиции на 3-й палке (индекс = номер диска)
+            max_steps — макс. шагов в эпизоде (нужно при use_death_penalty)
+            step_number — номер текущего шага (1-based, после хода)
         Output: (total_reward, done)
             total_reward — суммарная награда за шаг
             done — True если use_death_penalty и is_invalid (эпизод завершён)
         """
-        ...
+        total = self.reward_step
+
+        if is_invalid:
+            if self.use_death_penalty:
+                extra = 0
+                if max_steps is not None and step_number is not None:
+                    extra = step_number - max_steps  # отрицательно: штраф за несхоженные шаги
+                total += self.death_penalty + extra
+                return total, True
+            total += self.invalid_move
+
+        total += self.correct_placement * sum(is_correct_placement)
+        return total, False
