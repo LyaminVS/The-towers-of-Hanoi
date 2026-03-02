@@ -19,7 +19,8 @@ USE_DEATH_PENALTY = False  # True — эпизод завершается при
 
 # --- Параметры обучения ---
 LEARNING_RATE = 0.1  # для табличных методов (если появятся)
-DISCOUNT_FACTOR = 0.99  # gamma для discounted returns
+GAMMA = 0.99  # коэффициент дисконтирования для discounted returns (Σ γ^k * r_k)
+DISCOUNT_FACTOR = 0.99  # алиас для GAMMA (для совместимости)
 NUM_EPISODES = 5000  # количество эпизодов обучения
 MAX_STEPS_PER_EPISODE = 100  # лимит шагов (2^n - 1 для n дисков)
 LOG_INTERVAL = 100  # логировать каждые N эпизодов
