@@ -111,4 +111,12 @@ class Reward:
             total += self.invalid_move
 
         total += self.correct_placement * sum(is_correct_placement)
+
+        # При победе: начислить награду за все «виртуальные» оставшиеся шаги (как будто остаёмся в победе)
+        if (all(is_correct_placement) and max_steps is not None and step_number is not None
+                and step_number < max_steps):
+            total += (max_steps - step_number) * (
+                sum(is_correct_placement) * self.correct_placement - self.reward_step
+            )
+
         return total, False
