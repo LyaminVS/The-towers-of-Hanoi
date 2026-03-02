@@ -6,207 +6,141 @@ import os
 import pygame
 import colorsys
 
-# Скрываем приветственное сообщение Pygame в консоли
+# Скрываем приветственное сообщение Pygame
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 
-
 class PygameRenderer:
-    """
-    Класс для отрисовки Ханойской башни в отдельном окне.
-    """
-
-    # Цветовая палитра (современная темная тема)
-    BG_COLOR = (30, 30, 36)
-    BASE_COLOR = (80, 80, 90)
-    STICK_COLOR = (120, 120, 130)
-    TEXT_COLOR = (220, 220, 220)
-    HIGHLIGHT_COLOR = (255, 215, 0)  # Золотой для выделения
-    ERROR_COLOR = (255, 100, 100)
-    SUCCESS_COLOR = (100, 255, 100)
+    # Цветовая палитра
+    BG_COLOR = (25, 25, 30)
+    BASE_COLOR = (70, 70, 80)
+    STICK_COLOR = (100, 100, 110)
+    TEXT_COLOR = (240, 240, 240)
+    HIGHLIGHT_COLOR = (255, 215, 0)
+    ERROR_COLOR = (255, 80, 80)
+    SUCCESS_COLOR = (80, 255, 150)
 
     def __init__(self, num_disks: int, num_sticks: int = 3):
         self.num_disks = num_disks
         self.num_sticks = num_sticks
 
-        # Настройки размеров
-        self.stick_spacing = 250
-        self.base_height = 40
-        self.stick_width = 16
-        self.disk_height = 30
-        self.max_disk_width = 200
-        self.min_disk_width = 60
-
-        # Размер окна
+        # --- УВЕЛИЧЕННЫЕ РАЗМЕРЫ ДЛЯ БОЛЬШОГО ОКНА ---
+        self.stick_spacing = 350  # Было 250
+        self.base_height = 50
+        self.stick_width = 20
+        self.disk_height = 35     # Было 30
+        self.max_disk_width = 280 # Было 200
+        self.min_disk_width = 80
+        
+        # Динамический размер окна
         self.width = self.stick_spacing * self.num_sticks
-        self.height = self.num_disks * self.disk_height + 250
+        self.height = max(600, self.num_disks * self.disk_height + 400)
 
-        # Инициализация Pygame
         pygame.init()
+        # Попытка сделать окно более четким на HighDPI мониторах
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption(f"Tower of Hanoi - {self.num_disks} Disks")
-        self.font = pygame.font.SysFont("Arial", 24, bold=True)
-        self.small_font = pygame.font.SysFont("Arial", 18)
+        
+        # Шрифты
+        self.font_main = pygame.font.SysFont("Verdana", 28, bold=True)
+        self.font_msg = pygame.font.SysFont("Verdana", 22, italic=True)
+        self.font_small = pygame.font.SysFont("Verdana", 16)
 
         self.clock = pygame.time.Clock()
         self.disk_colors = self._generate_colors(self.num_disks)
 
-    def _generate_colors(self, num_colors: int) -> list:
-        """Генерирует красивый градиент цветов для дисков (от красного к фиолетовому)."""
-        colors = []
-        for i in range(num_colors):
-            hue = i / max(1, (num_colors - 1)) * 0.8
-            r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 0.9)
-            colors.append((int(r * 255), int(g * 255), int(b * 255)))
-        return colors
+    def _generate_colors(self, n: int) -> list:
+        return [tuple(int(c*255) for c in colorsys.hsv_to_rgb(i/max(1, n-1)*0.7, 0.8, 0.9)) for i in range(n)]
 
     def render(self, state: tuple, step_count: int, total_reward: float, selected_stick: int = None, message: str = ""):
-        """
-        Отрисовать текущее состояние.
-        """
         self.screen.fill(self.BG_COLOR)
 
-        # Рисуем нижнюю базу
-        base_rect = pygame.Rect(
-            50, self.height - self.base_height - 50,
-            self.width - 100, self.base_height
-        )
-        pygame.draw.rect(self.screen, self.BASE_COLOR, base_rect, border_radius=10)
+        # 1. ОТРИСОВКА ТЕКСТА (Разделяем по высоте, чтобы не перекрывались)
+        # Верхняя строка: Шаги и Счет
+        score_surface = self.font_main.render(f"STEPS: {step_count}   SCORE: {total_reward:.1f}", True, self.TEXT_COLOR)
+        self.screen.blit(score_surface, (30, 30))
 
-        # Рисуем палки
-        stick_y_start = self.height - self.base_height - 50 - (self.num_disks + 2) * self.disk_height
-        stick_height_total = (self.num_disks + 2) * self.disk_height
-
-        for i in range(self.num_sticks):
-            stick_x = self._get_stick_center_x(i)
-            stick_rect = pygame.Rect(
-                stick_x - self.stick_width // 2, stick_y_start,
-                self.stick_width, stick_height_total
-            )
-            
-            # Подсветка выбранной палки
-            color = self.HIGHLIGHT_COLOR if i == selected_stick else self.STICK_COLOR
-            pygame.draw.rect(self.screen, color, stick_rect, border_radius=8)
-
-            # Номера палок под базой
-            text = self.font.render(str(i + 1), True, self.TEXT_COLOR)
-            self.screen.blit(text, (stick_x - text.get_width() // 2, self.height - 40))
-
-        # Рисуем диски (0 — самый большой)
-        for disk_idx, (stick, height) in enumerate(state):
-            width_step = (self.max_disk_width - self.min_disk_width) / max(1, self.num_disks - 1)
-            disk_width = self.max_disk_width - (disk_idx * width_step)
-            
-            center_x = self._get_stick_center_x(stick)
-            y = self.height - self.base_height - 50 - (height + 1) * self.disk_height
-
-            rect = pygame.Rect(0, 0, disk_width, self.disk_height - 2)
-            rect.center = (center_x, y + self.disk_height // 2)
-
-            pygame.draw.rect(self.screen, self.disk_colors[disk_idx], rect, border_radius=12)
-
-        # Текстовая информация (Шаги и Награда)
-        info_text = self.font.render(f"Steps: {step_count}   |   Score: {total_reward:.1f}", True, self.TEXT_COLOR)
-        self.screen.blit(info_text, (20, 20))
-
-        # Сообщения (Ошибки, Подсказки)
+        # Вторая строка: Сообщения (опускаем ниже на y=80)
         if message:
-            if "Invalid" in message or "Penalty" in message:
-                msg_color = self.ERROR_COLOR
-            elif "Reward" in message or "Good" in message or "Perfect" in message:
-                msg_color = self.SUCCESS_COLOR
-            else:
-                msg_color = self.HIGHLIGHT_COLOR
+            color = self.HIGHLIGHT_COLOR
+            if "Invalid" in message or "Penalty" in message: color = self.ERROR_COLOR
+            if "Good" in message or "Perfect" in message: color = self.SUCCESS_COLOR
             
-            msg_text = self.font.render(message, True, msg_color)
-            self.screen.blit(msg_text, (self.width // 2 - msg_text.get_width() // 2, 20))
+            msg_surface = self.font_msg.render(message, True, color)
+            # Центрируем сообщение
+            msg_rect = msg_surface.get_rect(center=(self.width // 2, 90))
+            self.screen.blit(msg_surface, msg_rect)
 
-        # Подсказка по управлению
-        help_text = self.small_font.render("Click sticks to move, or use keys 1, 2, 3. ESC to quit.", True, self.BASE_COLOR)
-        self.screen.blit(help_text, (self.width // 2 - help_text.get_width() // 2, self.height - 25))
+        # 2. БАЗА И ПАЛКИ
+        base_y = self.height - 100
+        pygame.draw.rect(self.screen, self.BASE_COLOR, (50, base_y, self.width - 100, self.base_height), border_radius=15)
+
+        stick_h = (self.num_disks + 3) * self.disk_height
+        for i in range(self.num_sticks):
+            x = int((i + 0.5) * self.stick_spacing)
+            color = self.HIGHLIGHT_COLOR if i == selected_stick else self.STICK_COLOR
+            pygame.draw.rect(self.screen, color, (x - self.stick_width//2, base_y - stick_h, self.stick_width, stick_h), border_radius=10)
+            
+            # Номера палок
+            num_surf = self.font_main.render(str(i+1), True, self.BASE_COLOR)
+            self.screen.blit(num_surf, (x - num_surf.get_width()//2, base_y + 60))
+
+        # 3. ДИСКИ
+        for disk_idx, (stick, height) in enumerate(state):
+            w_step = (self.max_disk_width - self.min_disk_width) / max(1, self.num_disks - 1)
+            w = self.max_disk_width - (disk_idx * w_step)
+            x = int((stick + 0.5) * self.stick_spacing)
+            y = base_y - (height + 1) * self.disk_height
+            
+            rect = pygame.Rect(0, 0, w, self.disk_height - 4)
+            rect.center = (x, y + self.disk_height // 2)
+            pygame.draw.rect(self.screen, self.disk_colors[disk_idx], rect, border_radius=10)
+
+        # Подсказка снизу
+        help_surf = self.font_small.render("Controls: Mouse clicks or Keys [1], [2], [3] | ESC to Quit", True, self.STICK_COLOR)
+        self.screen.blit(help_surf, (self.width // 2 - help_surf.get_width() // 2, self.height - 30))
 
         pygame.display.flip()
 
-    def _get_stick_center_x(self, stick_idx: int) -> int:
-        return int((stick_idx + 0.5) * self.stick_spacing)
-
-    def get_human_action(self, state: tuple, step_count: int, total_reward: float, valid_actions: list, initial_message: str = "") -> tuple:
-        """
-        Игровой цикл ожидания хода от человека.
-        """
-        selected_stick = None
-        message = initial_message
-
+    def get_human_action(self, state, steps, reward, valid_actions, initial_msg):
+        selected = None
+        message = initial_msg
         while True:
-            self.render(state, step_count, total_reward, selected_stick, message)
+            self.render(state, steps, reward, selected, message)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: return None
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE: return None
+                    s_key = None
+                    if event.key in (pygame.K_1, pygame.K_KP1): s_key = 0
+                    if event.key in (pygame.K_2, pygame.K_KP2): s_key = 1
+                    if event.key in (pygame.K_3, pygame.K_KP3): s_key = 2
+                    if s_key is not None:
+                        res, selected, message = self._process_selection(s_key, selected, valid_actions)
+                        if res: return res
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    s_mouse = pygame.mouse.get_pos()[0] // self.stick_spacing
+                    if 0 <= s_mouse < self.num_sticks:
+                        res, selected, message = self._process_selection(s_mouse, selected, valid_actions)
+                        if res: return res
             self.clock.tick(60)
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return None
-                
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        return None
-                    
-                    stick_clicked = None
-                    if event.key in (pygame.K_1, pygame.K_KP1): stick_clicked = 0
-                    if event.key in (pygame.K_2, pygame.K_KP2): stick_clicked = 1
-                    if event.key in (pygame.K_3, pygame.K_KP3): stick_clicked = 2
+    def _process_selection(self, clicked, selected, valid):
+        if selected is None:
+            if any(a[0] == clicked for a in valid): return None, clicked, "Where to move?"
+            return None, None, "That stick is empty!"
+        if selected == clicked: return None, None, "Canceled."
+        action = (selected, clicked)
+        if action in valid: return action, None, ""
+        return None, None, "Invalid target stick!"
 
-                    if stick_clicked is not None:
-                        res, selected_stick, message = self._process_selection(stick_clicked, selected_stick, valid_actions)
-                        if res is not None:
-                            return res
-
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mouse_x, _ = pygame.mouse.get_pos()
-                    stick_clicked = mouse_x // self.stick_spacing
-                    
-                    if 0 <= stick_clicked < self.num_sticks:
-                        res, selected_stick, message = self._process_selection(stick_clicked, selected_stick, valid_actions)
-                        if res is not None:
-                            return res
-
-    def _process_selection(self, stick_clicked: int, selected_stick: int, valid_actions: list):
-        if selected_stick is None:
-            # Проверяем, есть ли на палке диски (можно ли сделать ход с неё)
-            if any(action[0] == stick_clicked for action in valid_actions):
-                return None, stick_clicked, "Select target stick..."
-            else:
-                return None, None, "Invalid! Stick is empty."
-        else:
-            if selected_stick == stick_clicked:
-                return None, None, "Selection canceled."
-            
-            action = (selected_stick, stick_clicked)
-            # Если ход в списке доступных (в среде он доступен, даже если диск больше — это даст штраф)
-            if action in valid_actions:
-                return action, None, ""
-            else:
-                return None, None, "Invalid target!"
-
-    def show_end_screen(self, steps: int, total_reward: float, is_victory: bool):
-        """Экран конца игры (Победа или Смерть)."""
+    def show_end_screen(self, steps, reward, win):
         self.screen.fill(self.BG_COLOR)
-        
-        main_text = f"VICTORY in {steps} steps!" if is_victory else "GAME OVER!"
-        color = self.SUCCESS_COLOR if is_victory else self.ERROR_COLOR
-        
-        vic_text = self.font.render(main_text, True, color)
-        score_text = self.font.render(f"Final Score: {total_reward:.1f}", True, self.HIGHLIGHT_COLOR)
-        close_text = self.small_font.render("Press any key or click to exit...", True, self.TEXT_COLOR)
-        
-        self.screen.blit(vic_text, (self.width // 2 - vic_text.get_width() // 2, self.height // 2 - 40))
-        self.screen.blit(score_text, (self.width // 2 - score_text.get_width() // 2, self.height // 2))
-        self.screen.blit(close_text, (self.width // 2 - close_text.get_width() // 2, self.height // 2 + 50))
+        txt = "VICTORY!" if win else "GAME OVER"
+        clr = self.SUCCESS_COLOR if win else self.ERROR_COLOR
+        surf = self.font_main.render(f"{txt} Steps: {steps} Score: {reward:.1f}", True, clr)
+        self.screen.blit(surf, (self.width//2 - surf.get_width()//2, self.height//2))
         pygame.display.flip()
-
-        waiting = True
-        while waiting:
-            self.clock.tick(30)
-            for event in pygame.event.get():
-                if event.type in (pygame.QUIT, pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
-                    waiting = False
+        pygame.time.wait(2000)
 
     def close(self):
         pygame.quit()

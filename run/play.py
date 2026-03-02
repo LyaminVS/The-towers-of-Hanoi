@@ -1,98 +1,73 @@
-"""
-Скрипт игры в Tower of Hanoi вручную через красивый графический интерфейс.
-Запуск: python run/play.py --num_disks 3
-"""
-
 import sys
 import argparse
 from pathlib import Path
 
-# Добавляем корень проекта в sys.path
+# Добавляем корень проекта
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Импорт конфига
+from config import settings
 from env.environment import create_env
 from env.actions import get_valid_actions
 from env.render import PygameRenderer
-
+from env.rewards import Reward
 
 def parse_args():
-    """Парсинг аргументов командной строки."""
-    parser = argparse.ArgumentParser(description="Play Tower of Hanoi manually.")
-    parser.add_argument("--num_disks", type=int, default=3, help="Number of disks (default: 3)")
+    parser = argparse.ArgumentParser(description="Play Tower of Hanoi.")
+    # По умолчанию берем значения из settings.py
+    parser.add_argument("--num_disks", type=int, default=settings.NUM_DISKS, help="Number of disks")
     return parser.parse_args()
-
 
 def main():
     args = parse_args()
-    num_disks = args.num_disks
-
-    print(f"Starting Tower of Hanoi with {num_disks} disks.")
-    print("Controls: Click on sticks using mouse, or press 1, 2, 3 on keyboard.")
-
-    # Используем настоящую среду
-    env = create_env(num_disks=num_disks, num_sticks=3)
-    renderer = PygameRenderer(num_disks=num_disks, num_sticks=3)
     
-    # Первый сброс
+    # 1. Создаем схему наград напрямую из конфига
+    reward_scheme = Reward.from_config(settings)
+    
+    # 2. Создаем среду с параметрами из конфига/аргументов
+    env = create_env(
+        num_disks=args.num_disks, 
+        num_sticks=settings.NUM_STICKS, 
+        max_steps=settings.MAX_STEPS_PER_EPISODE,
+        reward=reward_scheme
+    )
+    
+    renderer = PygameRenderer(num_disks=args.num_disks, num_sticks=settings.NUM_STICKS)
+    
     obs, info = env.reset()
     state = info["state"]
-    step_count = info["step_count"]
-    
     total_reward = 0.0
-    message = "Game Started! Make your move."
+    message = f"Goal: Move {args.num_disks} disks to the last stick!"
 
     try:
         while True:
-            # Получаем доступные ходы
-            valid_actions = get_valid_actions(tuple(state), env.num_sticks)
+            # Получаем все возможные пары ходов (даже потенциально невалидные для RL)
+            valid_actions = [(f, t) for f in range(env.num_sticks) for t in range(env.num_sticks) if f != t]
 
-            # Рендер и ожидание клика пользователя
-            action = renderer.get_human_action(tuple(state), step_count, total_reward, valid_actions, message)
+            action = renderer.get_human_action(tuple(state), env._step_count, total_reward, valid_actions, message)
+            if action is None: break
 
-            if action is None:
-                print("\nGame exited by user.")
-                break
-
-            # Делаем шаг в настоящей среде
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
-            
-            # === ИСПОЛЬЗУЕМ ВСЁ ИЗ INFO ===
             state = info["state"]
-            step_count = info["step_count"]
-            is_invalid = info["is_invalid"]
-            correct_count = info["is_correct_placement"]
 
-            # Формируем динамическое сообщение на основе info от среды
-            if is_invalid:
-                message = f"Invalid Move! Penalty! (Reward: {reward:.1f})"
+            # Логика сообщений из info
+            if info.get("is_invalid"):
+                message = f"Invalid move! Penalty: {reward:.1f}"
             else:
-                message = f"Nice! {correct_count}/{num_disks} disks placed correctly. (Reward: {reward:.1f})"
+                correct = info.get("is_correct_placement", 0)
+                message = f"Step Reward: {reward:.1f} | Placed: {correct}/{args.num_disks}"
 
-            # Проверка конца эпизода (Победа или смерть от штрафов)
             if terminated or truncated:
-                # Если все диски в правильной позиции — это победа
-                is_victory = (correct_count == num_disks)
-                
-                final_msg = "Perfect! Target reached!" if is_victory else "Game Over! (Terminated/Truncated)"
-                
-                # Последний раз рисуем финальный кадр
-                renderer.render(tuple(state), step_count, total_reward, message=final_msg)
-                
-                # Показываем финальный экран
-                renderer.show_end_screen(step_count, total_reward, is_victory)
-                
-                if is_victory:
-                    print(f"\nVictory! Solved in {step_count} steps. Score: {total_reward}")
-                else:
-                    print(f"\nGame Over. Score: {total_reward}")
+                is_win = (info.get("is_correct_placement", 0) == args.num_disks)
+                renderer.render(tuple(state), env._step_count, total_reward, message="Finished!")
+                renderer.show_end_screen(env._step_count, total_reward, is_win)
                 break
 
     except KeyboardInterrupt:
-        print("\nGame interrupted by user (Ctrl+C).")
+        pass
     finally:
         renderer.close()
-
 
 if __name__ == "__main__":
     main()
