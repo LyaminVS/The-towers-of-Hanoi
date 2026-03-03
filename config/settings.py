@@ -6,7 +6,7 @@
 """
 
 # --- Параметры игры ---
-NUM_DISKS = 4  # количество дисков (3 — минимум, 5+ — сложнее)
+NUM_DISKS = 3  # количество дисков (3 — минимум, 5+ — сложнее)
 NUM_STICKS = 3  # количество палок (всегда 3 для классической задачи)
 
 # --- Награды и штрафы (env.rewards.Reward) ---
@@ -24,22 +24,18 @@ GAMMA = 0.99  # коэффициент дисконтирования для dis
 DISCOUNT_FACTOR = 0.99  # алиас для GAMMA (для совместимости)
 NUM_EPISODES = 20000  # количество эпизодов обучения
 MAX_STEPS_PER_EPISODE = 200  # лимит шагов (2^n - 1 для n дисков)
-LOG_INTERVAL = 100  # логировать каждые N эпизодов
+LOG_INTERVAL = 50  # логировать каждые N эпизодов
 CHECKPOINT_INTERVAL = 1000  # сохранять чекпоинт каждые N эпизодов
 RANDOM_INIT = False  # случайное начальное состояние в каждом эпизоде
 
 # --- Выбор метода агента ---
 # "reinforce" | "reinforce_baseline" | "trpo"
-AGENT_METHOD = "reinforce"
+AGENT_METHOD = "trpo"
 
 # --- REINFORCE ---
 REINFORCE_LR = 1e-3
 REINFORCE_HIDDEN_DIMS = [128, 128]
-REINFORCE_ENTROPY_COEF = 250  # фиксированный коэффициент (если не adaptive)
-REINFORCE_ENTROPY_ADAPTIVE = True  # True — коэф. уменьшается при уменьшении ср. числа шагов
-REINFORCE_ENTROPY_COEF_MIN = 10 # минимальный коэф. (когда модель хорошо решает)
-REINFORCE_ENTROPY_COEF_MAX = 2500   # максимальный коэф. (когда модель делает много шагов)
-REINFORCE_ENTROPY_WINDOW = 100    # окно для скользящего среднего шагов
+REINFORCE_ENTROPY_COEF = 0.01  # коэффициент энтропии для исследования  # размеры скрытых слоёв policy
 
 # --- REINFORCE + baseline ---
 REINFORCE_BASELINE_LR = 1e-3
