@@ -56,21 +56,28 @@ class PolicyNetwork(nn.Module):
         return logits
 
     def get_log_probs(self, state, action_indices, valid_actions_mask=None):
-        """
-        Получить log π(a|s) для выбранных действий.
-
-        Input:
-            state — наблюдение, shape (batch, observation_dim)
-            action_indices — индексы выбранных действий, shape (batch,)
-            valid_actions_mask — опционально, маска допустимых действий
-        Output: log_probs — логарифмы вероятностей, shape (batch,)
-        """
         logits = self.forward(state, valid_actions_mask)
         log_probs = F.log_softmax(logits, dim=-1)
-        action_indices = _to_tensor(action_indices, device=logits.device, dtype=torch.long)
-        if action_indices.dim() == 2:
+
+        # --- FIX: ensure batch dimension exists ---
+        if log_probs.dim() == 1:          # [A] -> [1, A]
+            log_probs = log_probs.unsqueeze(0)
+
+        # Convert action_indices to tensor without auto-expanding to 2D
+        if not isinstance(action_indices, torch.Tensor):
+            action_indices = torch.as_tensor(action_indices, dtype=torch.long, device=log_probs.device)
+        else:
+            action_indices = action_indices.to(dtype=torch.long, device=log_probs.device)
+
+        # action_indices can be scalar, 1D [B], or 2D [B,1] depending on caller
+        if action_indices.dim() == 0:      # [] -> [1]
+            action_indices = action_indices.unsqueeze(0)
+        elif action_indices.dim() == 2 and action_indices.size(-1) == 1:  # [B,1] -> [B]
             action_indices = action_indices.squeeze(-1)
+
+        # Now: log_probs [B, A], action_indices [B]
         return log_probs.gather(dim=-1, index=action_indices.unsqueeze(-1)).squeeze(-1)
+
 
     def get_entropy(self, state, valid_actions_mask=None):
         """
@@ -88,23 +95,36 @@ class PolicyNetwork(nn.Module):
         return entropy
 
 
+import torch
+import torch.nn as nn
+
 class ValueNetwork(nn.Module):
     """
-    Сеть оценки V(s). Вход — state, выход — один скаляр (ожидаемый return).
+    Линейный критик: V(s) = w^T s + b
+    Эквивалент линейной регрессии (по сути, baseline как линейная модель).
     """
 
     def __init__(self, observation_dim: int, hidden_dims: list):
         super().__init__()
-        dims = [observation_dim] + list(hidden_dims) + [1]
-        layers = []
-        for i in range(len(dims) - 1):
-            layers.append(nn.Linear(dims[i], dims[i + 1]))
-            if i < len(dims) - 2:
-                layers.append(nn.ReLU())
-        self.mlp = nn.Sequential(*layers)
+        self.observation_dim = observation_dim
 
-    def forward(self, state):
-        """state -> V(s), shape (batch,) или (batch, 1)."""
-        state = _to_tensor(state, device=next(self.parameters()).device)
-        out = self.mlp(state)
-        return out.squeeze(-1)
+        # Единственный линейный слой -> скаляр V(s)
+        self.linear = nn.Linear(observation_dim, 1)
+
+        # hidden_dims оставляем ради совместимости, но не используем
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        """
+        state: Tensor shape [B, observation_dim] или [observation_dim]
+        returns: Tensor shape [B] (скаляр на каждый state)
+        """
+        if not torch.is_tensor(state):
+            state = torch.tensor(state, dtype=torch.float32, device=next(self.parameters()).device)
+        else:
+            state = state.to(dtype=torch.float32, device=next(self.parameters()).device)
+
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+
+        v = self.linear(state)          # [B, 1]
+        return v.squeeze(-1)            # [B]
