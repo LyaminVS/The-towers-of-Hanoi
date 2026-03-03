@@ -32,15 +32,14 @@ def run_episode(env, agent, max_steps: int, random_init: bool = False):
 
 def _compute_adaptive_entropy_coef(
     avg_steps: float,
-    steps_min: float,
     steps_max: float,
     coef_min: float,
     coef_max: float,
 ) -> float:
-    """Линейная интерполяция: много шагов -> max coef, мало шагов -> min coef."""
-    if steps_max <= steps_min:
-        return coef_max
-    t = (avg_steps - steps_min) / (steps_max - steps_min)
+    """Линейная интерполяция: меньше шагов -> min coef, больше -> max coef."""
+    if steps_max <= 0:
+        return coef_min
+    t = avg_steps / steps_max
     t = max(0.0, min(1.0, t))
     return coef_min + (coef_max - coef_min) * t
 
@@ -61,14 +60,13 @@ def train(
     gamma = agent.config.get("discount_factor", 0.99)
     history = []
     steps_buffer = []  # для скользящего среднего
-    steps_optimal = 2 ** env.num_disks - 1  # оптимальное число шагов
 
     for ep in range(num_episodes):
         total_reward, num_steps, success, rewards, update_metrics = run_episode(
             env, agent, max_steps_per_episode, random_init=random_init
         )
 
-        # Адаптивный коэффициент энтропии: уменьшается при уменьшении ср. шагов
+        # Адаптивный коэффициент энтропии: меньше шагов -> min coef, больше -> max
         if entropy_adaptive and hasattr(agent, "entropy_coef"):
             steps_buffer.append(num_steps)
             if len(steps_buffer) > entropy_window:
@@ -76,7 +74,6 @@ def train(
             avg_steps = sum(steps_buffer) / len(steps_buffer)
             agent.entropy_coef = _compute_adaptive_entropy_coef(
                 avg_steps,
-                steps_min=steps_optimal,
                 steps_max=float(max_steps_per_episode),
                 coef_min=entropy_coef_min,
                 coef_max=entropy_coef_max,

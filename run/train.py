@@ -33,11 +33,55 @@ def parse_args() -> object:
                         help="Path to save the trained model (default: model.pth)")
     parser.add_argument("--entropy_adaptive", action="store_true",
                         help="Adaptive entropy: coef decreases as avg steps decrease")
+    parser.add_argument("--no-entropy_adaptive", action="store_true",
+                        help="Disable adaptive entropy (use fixed coef)")
+    parser.add_argument("--reward_step", type=float, default=None,
+                        help="Override REWARD_STEP from config")
+    parser.add_argument("--reward_goal", type=float, default=None,
+                        help="Override REWARD_GOAL from config")
+    parser.add_argument("--reward_invalid_move", type=float, default=None,
+                        help="Override REWARD_INVALID_MOVE from config")
+    parser.add_argument("--reward_correct_placement", type=float, default=None,
+                        help="Override REWARD_CORRECT_PLACEMENT from config")
+    parser.add_argument("--entropy_coef", type=float, default=None,
+                        help="Override REINFORCE_ENTROPY_COEF (fixed, when not adaptive)")
+    parser.add_argument("--entropy_coef_min", type=float, default=None,
+                        help="Override REINFORCE_ENTROPY_COEF_MIN")
+    parser.add_argument("--entropy_coef_max", type=float, default=None,
+                        help="Override REINFORCE_ENTROPY_COEF_MAX")
+    parser.add_argument("--entropy_window", type=int, default=None,
+                        help="Override REINFORCE_ENTROPY_WINDOW")
+    parser.add_argument("--log_interval", type=int, default=None,
+                        help="Override LOG_INTERVAL from config")
+    parser.add_argument("--history_path", type=str, default=None,
+                        help="Path to save training history (default: logs/training_history.json)")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    # Переопределение параметров из CLI
+    if args.reward_step is not None:
+        settings.REWARD_STEP = args.reward_step
+    if args.reward_goal is not None:
+        settings.REWARD_GOAL = args.reward_goal
+    if args.reward_invalid_move is not None:
+        settings.REWARD_INVALID_MOVE = args.reward_invalid_move
+    if args.reward_correct_placement is not None:
+        settings.REWARD_CORRECT_PLACEMENT = args.reward_correct_placement
+    if args.entropy_coef is not None:
+        settings.REINFORCE_ENTROPY_COEF = args.entropy_coef
+    if args.entropy_coef_min is not None:
+        settings.REINFORCE_ENTROPY_COEF_MIN = args.entropy_coef_min
+    if args.entropy_coef_max is not None:
+        settings.REINFORCE_ENTROPY_COEF_MAX = args.entropy_coef_max
+    if args.entropy_window is not None:
+        settings.REINFORCE_ENTROPY_WINDOW = args.entropy_window
+    if args.log_interval is not None:
+        settings.LOG_INTERVAL = args.log_interval
+    if args.no_entropy_adaptive:
+        settings.REINFORCE_ENTROPY_ADAPTIVE = False
 
     # 1. Настройка логгера (из settings.py)
     setup_logger(
@@ -45,8 +89,10 @@ def main():
         level=settings.LOG_LEVEL
     )
     
-    entropy_adaptive = args.entropy_adaptive or getattr(settings, "REINFORCE_ENTROPY_ADAPTIVE", False)
-    if args.entropy_adaptive:
+    entropy_adaptive = (args.entropy_adaptive or getattr(settings, "REINFORCE_ENTROPY_ADAPTIVE", False)) and not args.no_entropy_adaptive
+    if args.no_entropy_adaptive:
+        settings.REINFORCE_ENTROPY_ADAPTIVE = False
+    elif args.entropy_adaptive:
         settings.REINFORCE_ENTROPY_ADAPTIVE = True
 
     log_message(f"=== Starting Training Session ===")
@@ -93,13 +139,13 @@ def main():
             agent=agent,
             num_episodes=args.num_episodes,
             max_steps_per_episode=args.max_steps,
-            log_interval=settings.LOG_INTERVAL,
+            log_interval=args.log_interval or settings.LOG_INTERVAL,
             random_init=args.random_init,
             checkpoint_interval=args.checkpoint_interval,
             entropy_adaptive=entropy_adaptive,
-            entropy_coef_min=getattr(settings, "REINFORCE_ENTROPY_COEF_MIN", 0.01),
-            entropy_coef_max=getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2),
-            entropy_window=getattr(settings, "REINFORCE_ENTROPY_WINDOW", 100),
+            entropy_coef_min=args.entropy_coef_min if args.entropy_coef_min is not None else getattr(settings, "REINFORCE_ENTROPY_COEF_MIN", 0.01),
+            entropy_coef_max=args.entropy_coef_max if args.entropy_coef_max is not None else getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2),
+            entropy_window=args.entropy_window if args.entropy_window is not None else getattr(settings, "REINFORCE_ENTROPY_WINDOW", 100),
         )
         
         # 5. Сохранение результатов
@@ -108,7 +154,7 @@ def main():
         log_message(f"Model weights saved to {args.save_model}")
         
         # Сохраняем историю для графиков
-        history_path = "logs/training_history.json"
+        history_path = args.history_path or "logs/training_history.json"
         save_history(history_path, history)
         log_message(f"Training history saved to {history_path}")
         
