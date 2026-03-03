@@ -3,8 +3,7 @@ import torch
 from env.actions import get_valid_actions
 from training.logger import log_episode, log_message
 
-def run_episode(env, agent, max_steps: int, use_death_penalty: bool = False, random_init: bool = False):
-    env.reward.use_death_penalty = use_death_penalty
+def run_episode(env, agent, max_steps: int, random_init: bool = False):
     env.max_steps = max_steps
     agent.reset_trajectory()
 
@@ -51,7 +50,6 @@ def train(
     agent,
     num_episodes,
     max_steps_per_episode,
-    use_death_penalty=False,
     log_interval=100,
     random_init=False,
     checkpoint_interval=1000,
@@ -67,7 +65,7 @@ def train(
 
     for ep in range(num_episodes):
         total_reward, num_steps, success, rewards, update_metrics = run_episode(
-            env, agent, max_steps_per_episode, use_death_penalty, random_init=random_init
+            env, agent, max_steps_per_episode, random_init=random_init
         )
 
         # Адаптивный коэффициент энтропии: уменьшается при уменьшении ср. шагов

@@ -76,9 +76,8 @@ class TowerOfHanoiEnv:
             action — (from_stick, to_stick), индексы палок 0..2
         Output: (observation, reward, terminated, truncated, info)
             observation — новое наблюдение после хода
-            reward — награда (по схеме Reward: step, invalid, correct, death)
-            terminated — True если цель достигнута (все на 3-й палке) или
-                        смерть (use_death_penalty и invalid)
+            reward — награда (по схеме Reward: step, invalid, correct)
+            terminated — True если цель достигнута (все на 3-й палке)
             truncated — True если step_count >= max_steps
             info — dict: is_invalid, is_correct_placement, step_count, state, ...
         """

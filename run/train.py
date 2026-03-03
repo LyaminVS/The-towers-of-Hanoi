@@ -93,7 +93,6 @@ def main():
             agent=agent,
             num_episodes=args.num_episodes,
             max_steps_per_episode=args.max_steps,
-            use_death_penalty=settings.USE_DEATH_PENALTY,
             log_interval=settings.LOG_INTERVAL,
             random_init=args.random_init,
             checkpoint_interval=args.checkpoint_interval,
