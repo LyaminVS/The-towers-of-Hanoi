@@ -31,15 +31,59 @@ def run_episode(env, agent, max_steps: int, use_death_penalty: bool = False, ran
     success = info.get("is_correct_placement", 0) == env.num_disks
     return total_reward, info["step_count"], success, rewards, update_metrics
 
-def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=False, log_interval=100, random_init=False, checkpoint_interval=1000):
+def _compute_adaptive_entropy_coef(
+    avg_steps: float,
+    steps_min: float,
+    steps_max: float,
+    coef_min: float,
+    coef_max: float,
+) -> float:
+    """Линейная интерполяция: много шагов -> max coef, мало шагов -> min coef."""
+    if steps_max <= steps_min:
+        return coef_max
+    t = (avg_steps - steps_min) / (steps_max - steps_min)
+    t = max(0.0, min(1.0, t))
+    return coef_min + (coef_max - coef_min) * t
+
+
+def train(
+    env,
+    agent,
+    num_episodes,
+    max_steps_per_episode,
+    use_death_penalty=False,
+    log_interval=100,
+    random_init=False,
+    checkpoint_interval=1000,
+    entropy_adaptive=False,
+    entropy_coef_min=0.01,
+    entropy_coef_max=0.2,
+    entropy_window=100,
+):
     gamma = agent.config.get("discount_factor", 0.99)
-    history = [] # Сюда собираем всё
+    history = []
+    steps_buffer = []  # для скользящего среднего
+    steps_optimal = 2 ** env.num_disks - 1  # оптимальное число шагов
 
     for ep in range(num_episodes):
         total_reward, num_steps, success, rewards, update_metrics = run_episode(
             env, agent, max_steps_per_episode, use_death_penalty, random_init=random_init
         )
-        
+
+        # Адаптивный коэффициент энтропии: уменьшается при уменьшении ср. шагов
+        if entropy_adaptive and hasattr(agent, "entropy_coef"):
+            steps_buffer.append(num_steps)
+            if len(steps_buffer) > entropy_window:
+                steps_buffer.pop(0)
+            avg_steps = sum(steps_buffer) / len(steps_buffer)
+            agent.entropy_coef = _compute_adaptive_entropy_coef(
+                avg_steps,
+                steps_min=steps_optimal,
+                steps_max=float(max_steps_per_episode),
+                coef_min=entropy_coef_min,
+                coef_max=entropy_coef_max,
+            )
+
         # Считаем дисконтированную награду для графиков (G_0)
         discounted_return = sum(gamma**k * r for k, r in enumerate(rewards))
 
@@ -48,28 +92,32 @@ def train(env, agent, num_episodes, max_steps_per_episode, use_death_penalty=Fal
             "episode": ep + 1,
             "reward": total_reward,
             "steps": num_steps,
-            "success": int(success), # 1 или 0 для графиков
+            "success": int(success),
             "discounted_return": discounted_return,
         }
-        # Добавляем лоссы и прочее, что вернул агент (policy_loss, value_loss и т.д.)
         if update_metrics:
             episode_metrics.update(update_metrics)
-            
+        if hasattr(agent, "entropy_coef"):
+            episode_metrics["entropy_coef"] = agent.entropy_coef
         history.append(episode_metrics)
 
         if (ep + 1) % log_interval == 0:
             recent = history[-log_interval:]
             avg_reward = sum(h["reward"] for h in recent) / log_interval
             success_rate = sum(h["success"] for h in recent) / log_interval
-            
+            log_kw = {
+                "success_rate": f"{success_rate:.1%}",
+                "loss": update_metrics.get("policy_loss", 0) if update_metrics else 0,
+                "entropy": update_metrics.get("entropy", 0) if update_metrics else 0,
+            }
+            if "entropy_coef" in episode_metrics:
+                log_kw["entropy_coef"] = episode_metrics["entropy_coef"]
             log_episode(
                 episode=ep + 1,
                 reward=avg_reward,
                 steps=int(sum(h["steps"] for h in recent) / log_interval),
                 success=success_rate > 0.5,
-                success_rate=f"{success_rate:.1%}",
-                loss=update_metrics.get("policy_loss", 0) if update_metrics else 0,
-                entropy=update_metrics.get("entropy", 0) if update_metrics else 0,
+                **log_kw,
             )
         
         # Сохранять модель каждые checkpoint_interval эпизодов

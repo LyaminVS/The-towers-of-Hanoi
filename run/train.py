@@ -31,6 +31,8 @@ def parse_args() -> object:
                         help="Path to model to load for continued training (e.g. model.pth or model_checkpoint_5000.pth)")
     parser.add_argument("--save_model", type=str, default="model.pth",
                         help="Path to save the trained model (default: model.pth)")
+    parser.add_argument("--entropy_adaptive", action="store_true",
+                        help="Adaptive entropy: coef decreases as avg steps decrease")
     return parser.parse_args()
 
 
@@ -43,8 +45,14 @@ def main():
         level=settings.LOG_LEVEL
     )
     
+    entropy_adaptive = args.entropy_adaptive or getattr(settings, "REINFORCE_ENTROPY_ADAPTIVE", False)
+    if args.entropy_adaptive:
+        settings.REINFORCE_ENTROPY_ADAPTIVE = True
+
     log_message(f"=== Starting Training Session ===")
     log_message(f"Method: {settings.AGENT_METHOD} | Disks: {settings.NUM_DISKS}")
+    if entropy_adaptive:
+        log_message(f"Entropy adaptive: min={getattr(settings, 'REINFORCE_ENTROPY_COEF_MIN', 0.01)}, max={getattr(settings, 'REINFORCE_ENTROPY_COEF_MAX', 0.2)}")
 
     # 2. Инициализация среды
     reward_scheme = Reward.from_config(settings)
@@ -60,12 +68,13 @@ def main():
     action_space = get_action_space(settings.NUM_STICKS)
     
     # Собираем конфиг агента из всех доступных параметров settings.py
+    entropy_adaptive = args.entropy_adaptive or getattr(settings, "REINFORCE_ENTROPY_ADAPTIVE", False)
     agent_config = {
         "learning_rate": settings.REINFORCE_LR,
         "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
-        "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF", 0.01),
+        "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1),
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
     }
@@ -88,6 +97,10 @@ def main():
             log_interval=settings.LOG_INTERVAL,
             random_init=args.random_init,
             checkpoint_interval=args.checkpoint_interval,
+            entropy_adaptive=entropy_adaptive,
+            entropy_coef_min=getattr(settings, "REINFORCE_ENTROPY_COEF_MIN", 0.01),
+            entropy_coef_max=getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2),
+            entropy_window=getattr(settings, "REINFORCE_ENTROPY_WINDOW", 100),
         )
         
         # 5. Сохранение результатов
