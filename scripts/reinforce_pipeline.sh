@@ -1,5 +1,5 @@
 #!/bin/bash
-# Пайплайн: фаза 1 (базовое) -> фаза 2 (дообучение)
+# Пайплайн REINFORCE: фаза 1 (базовое) -> фаза 2 (дообучение)
 # Все параметры заданы здесь — меняй по необходимости
 
 set -e
@@ -47,13 +47,13 @@ ENTROPY_COEF_MAX_PHASE2=2500
 ENTROPY_WINDOW_PHASE2=100
 
 # --- Пути ---
-MODEL_PHASE1="model_phase1.pth"
-MODEL_PHASE2="model_phase2.pth"
-HISTORY_PHASE1="logs/training_history_phase1.json"
-HISTORY_PHASE2="logs/training_history_phase2.json"
+MODEL_PHASE1="model_reinforce_phase1.pth"
+MODEL_PHASE2="model_reinforce_phase2.pth"
+HISTORY_PHASE1="logs/training_history_reinforce_phase1.json"
+HISTORY_PHASE2="logs/training_history_reinforce_phase2.json"
 
 # ========== ФАЗА 1 ==========
-echo "=== Фаза 1: Базовое обучение ==="
+echo "=== Фаза 1: Базовое обучение (REINFORCE) ==="
 echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD"
 echo "  REWARD_STEP=$REWARD_STEP_PHASE1, RANDOM_INIT=True, entropy_adaptive=False"
 echo "  Эпизодов: $NUM_EPISODES_PHASE1"
@@ -79,7 +79,7 @@ python run/train.py \
 
 # ========== ФАЗА 2 ==========
 echo ""
-echo "=== Фаза 2: Дообучение ==="
+echo "=== Фаза 2: Дообучение (REINFORCE) ==="
 echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD"
 echo "  REWARD_STEP=$REWARD_STEP_PHASE2, RANDOM_INIT=False, entropy_adaptive=True"
 echo "  Эпизодов: $NUM_EPISODES_PHASE2"

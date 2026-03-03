@@ -1,6 +1,6 @@
 """
 Скрипт сохранения одной игры в GIF.
-Запуск: python scripts/save_game_gif.py --output game.gif [--load_model model.pth]
+Запуск: python gif/save_game_gif.py --output game.gif [--load_model model.pth]
 """
 
 import os
