@@ -18,9 +18,6 @@ REWARD_INVALID_MOVE = -50.0  # штраф за недопустимый ход (
 REWARD_CORRECT_PLACEMENT = +100  # убрано: бонус только за финальный успех через REWARD_GOAL
 USE_CORRECT_PLACEMENT = True  # применять бонус за правильные диски
 
-# --- Устройство вычислений ---
-DEVICE = None  # None или "auto" — cuda если есть, иначе cpu; "cpu"; "cuda" или "cuda:0"
-
 # --- Параметры обучения ---
 LEARNING_RATE = 0.01  # для табличных методов (если появятся)
 GAMMA = 0.99  # коэффициент дисконтирования для discounted returns (Σ γ^k * r_k)

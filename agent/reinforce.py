@@ -9,7 +9,6 @@ import numpy as np
 from .base_agent import BaseAgent
 from .policy import PolicyNetwork
 from env.actions import action_to_index, index_to_action
-from utils.device import get_device
 
 
 def _valid_actions_mask(valid_actions: list, action_space: list, device) -> torch.Tensor:
@@ -32,8 +31,7 @@ class REINFORCEAgent(BaseAgent):
         self.action_space = action_space
         action_dim = len(action_space)
         hidden_dims = config.get("hidden_dims", [64, 64])
-        self.device = get_device(config.get("device"))
-        self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims).to(self.device)
+        self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
         self.optimizer = None
         self.policy_optimizer = torch.optim.Adam(
             self.policy_network.parameters(),

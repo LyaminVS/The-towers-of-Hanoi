@@ -16,7 +16,6 @@ from env.rewards import Reward
 from env.actions import get_action_space, get_valid_actions
 from env.render import PygameRenderer
 from agent import create_agent
-from utils.device import get_device
 
 
 def parse_args() -> object:
@@ -35,8 +34,6 @@ def parse_args() -> object:
                         help="Задержка между шагами при --render (мс)")
     parser.add_argument("--sample", action="store_true", help="Использовать сэмплирование при оценке вместо argmax")
     parser.add_argument("--save_results", type=str, default=settings.EVAL_SAVE_RESULTS)
-    parser.add_argument("--device", type=str, default=getattr(settings, "DEVICE", None),
-                        help="Device: cpu, cuda, cuda:0, or auto")
     return parser.parse_args()
 
 
@@ -143,7 +140,6 @@ def main() -> None:
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
         "num_sticks": settings.NUM_STICKS,
-        "device": get_device(args.device),
     }
 
     agent = create_agent(args.agent_method, obs_dim, action_space, agent_config)

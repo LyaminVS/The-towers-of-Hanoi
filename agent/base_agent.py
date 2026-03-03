@@ -136,16 +136,12 @@ class BaseAgent(ABC):
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file not found at: {path}")
 
-        # Загружаем на CPU, затем переносим на текущий device агента
         checkpoint = torch.load(path, map_location=torch.device("cpu"), weights_only=False)
-        target_device = getattr(self, "device", torch.device("cpu"))
 
         if hasattr(self, "policy_network") and "policy_network" in checkpoint:
             self.policy_network.load_state_dict(checkpoint["policy_network"])
-            self.policy_network.to(target_device)
         if hasattr(self, "value_network") and "value_network" in checkpoint:
             self.value_network.load_state_dict(checkpoint["value_network"])
-            self.value_network.to(target_device)
 
         # Восстанавливаем состояния оптимизаторов
         if hasattr(self, 'optimizer') and 'optimizer' in checkpoint:

@@ -64,8 +64,6 @@ def parse_args() -> object:
                         help="Path to save training history (default: logs/training_history.json)")
     parser.add_argument("--max_grad_norm", type=float, default=None,
                         help="Clip gradient norm for REINFORCE/baseline (default: from settings, None=no clip)")
-    parser.add_argument("--device", type=str, default=None,
-                        help="Device: cpu, cuda, cuda:0, or auto (default: from settings)")
     return parser.parse_args()
 
 
@@ -101,8 +99,6 @@ def main():
         settings.REINFORCE_MAX_GRAD_NORM = (
             None if args.max_grad_norm <= 0 else args.max_grad_norm
         )
-    if args.device is not None:
-        settings.DEVICE = args.device
     if args.no_entropy_adaptive:
         settings.REINFORCE_ENTROPY_ADAPTIVE = False
 
@@ -118,10 +114,8 @@ def main():
     elif args.entropy_adaptive:
         settings.REINFORCE_ENTROPY_ADAPTIVE = True
 
-    from utils.device import get_device
-    device = get_device(getattr(settings, "DEVICE", None))
     log_message(f"=== Starting Training Session ===")
-    log_message(f"Method: {settings.AGENT_METHOD} | Disks: {settings.NUM_DISKS} | Device: {device}")
+    log_message(f"Method: {settings.AGENT_METHOD} | Disks: {settings.NUM_DISKS}")
     if entropy_adaptive:
         log_message(f"Entropy adaptive: min={getattr(settings, 'REINFORCE_ENTROPY_COEF_MIN', 0.01)}, max={getattr(settings, 'REINFORCE_ENTROPY_COEF_MAX', 0.2)}")
 
@@ -153,7 +147,6 @@ def main():
         "max_grad_norm": getattr(settings, "REINFORCE_MAX_GRAD_NORM", None),
         "max_abs_advantage": getattr(settings, "TRPO_MAX_ABS_ADVANTAGE", 10.0),
         "max_grad_norm_cg": getattr(settings, "TRPO_MAX_GRAD_NORM_CG", 50.0),
-        "device": get_device(getattr(settings, "DEVICE", None)),
     }
 
     agent = create_agent(settings.AGENT_METHOD, obs_dim, action_space, agent_config)
