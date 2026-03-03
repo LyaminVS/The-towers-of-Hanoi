@@ -10,7 +10,7 @@ valid_actions всегда содержит все действия.
 - update() — раз в эпизод, как ожидает trainer.py
 
 CG: scipy.sparse.linalg.cg + LinearOperator (matrix-free).
-Value: ValueNetwork (у вас теперь линейная регрессия).
+Value: табличная MC-оценка V(s), сбрасываемая каждую итерацию.
 """
 
 from __future__ import annotations
@@ -23,8 +23,10 @@ import torch.nn.functional as F
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 from .base_agent import BaseAgent
-from .policy import PolicyNetwork, ValueNetwork
+from .policy import PolicyNetwork
+from .reinforce_baseline import state_to_index
 from env.actions import index_to_action
+from env.state import observation_to_state
 
 try:
     from scipy.sparse.linalg import cg as scipy_cg
@@ -43,9 +45,9 @@ class TRPOAgent(BaseAgent):
 
     Config keys (defaults):
       - discount_factor: 0.99
-      - hidden_dims: [64, 64]          (used by PolicyNetwork; ValueNetwork may ignore)
-      - value_lr: 1e-3
-      - value_iters: 1
+      - hidden_dims: [64, 64]
+      - num_sticks: 3
+      - mc_episodes: 5           (траекторий для MC-оценки V на каждой итерации)
       - max_kl: 0.01
       - cg_iters: 10
       - cg_tol: 1e-10
@@ -69,9 +71,11 @@ class TRPOAgent(BaseAgent):
 
         hidden_dims = config.get("hidden_dims", [64, 64])
         self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
-        self.value_network = ValueNetwork(observation_dim, hidden_dims)
 
         self.gamma = float(config.get("discount_factor", 0.99))
+        self.num_disks = observation_dim // 2
+        self.num_sticks = int(config.get("num_sticks", 3))
+        self.mc_episodes = int(config.get("mc_episodes", 5))
 
         self.max_kl = float(config.get("max_kl", config.get("TRPO_MAX_KL", 0.01)))
         self.cg_iters = int(config.get("cg_iters", config.get("TRPO_CG_ITERS", 10)))
@@ -79,12 +83,10 @@ class TRPOAgent(BaseAgent):
         self.backtrack_iters = int(config.get("backtrack_iters", config.get("TRPO_BACKTRACK_ITERS", 10)))
         self.backtrack_coef = float(config.get("backtrack_coef", config.get("TRPO_BACKTRACK_COEF", 0.5)))
         self.damping = float(config.get("damping", 1e-2))
-
         self.advantage_norm = bool(config.get("advantage_norm", False))
-        self.value_iters = int(config.get("value_iters", 1))
 
-        value_lr = float(config.get("value_lr", config.get("learning_rate", 1e-3)))
-        self.value_optimizer = torch.optim.Adam(self.value_network.parameters(), lr=value_lr)
+        # Ссылка на среду для MC-роллаутов. Устанавливается из trainer.py.
+        self.env = None
 
     # ---------------- acting ----------------
 
@@ -100,7 +102,7 @@ class TRPOAgent(BaseAgent):
             state_t = state_t.unsqueeze(0)
 
         with torch.no_grad():
-            logits = self.policy_network.forward(state_t, None)  # mask=None
+            logits = self.policy_network.forward(state_t, None)
             probs = F.softmax(logits, dim=-1)
             dist = torch.distributions.Categorical(probs=probs)
 
@@ -125,28 +127,20 @@ class TRPOAgent(BaseAgent):
         vector_to_parameters(flat, model.parameters())
 
     def _build_batch_tensors(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Returns:
-          states:     [T, obs_dim]
-          actions_idx:[T]
-          old_logp:   [T]
-        """
         device = next(self.policy_network.parameters()).device
 
         states = torch.as_tensor(np.asarray(self.saved_states), dtype=torch.float32, device=device)
-
         actions_idx = torch.as_tensor(
             [self.action_space.index(a) for a in self.saved_actions],
             dtype=torch.long,
             device=device,
         )
-
         old_logp = torch.as_tensor(np.asarray(self.saved_log_probs), dtype=torch.float32, device=device)
 
         return states, actions_idx, old_logp
 
     def _compute_mc_returns(self) -> torch.Tensor:
-        device = next(self.value_network.parameters()).device
+        device = next(self.policy_network.parameters()).device
         rewards = self.saved_rewards
         T = len(rewards)
 
@@ -158,24 +152,85 @@ class TRPOAgent(BaseAgent):
 
         return torch.as_tensor(returns, dtype=torch.float32, device=device)
 
-    def _fit_value(self, states: torch.Tensor, returns: torch.Tensor) -> float:
-        last_loss = 0.0
-        for _ in range(self.value_iters):
-            self.value_optimizer.zero_grad(set_to_none=True)
-            values = self.value_network(states)  # [T]
-            loss = F.mse_loss(values, returns)
-            loss.backward()
-            self.value_optimizer.step()
-            last_loss = float(loss.item())
-        return last_loss
+    # ---------------- MC value estimation ----------------
 
-    def _compute_advantages(self, states: torch.Tensor, returns: torch.Tensor) -> torch.Tensor:
-        with torch.no_grad():
-            values = self.value_network(states)
-        adv = returns - values
+    def _run_mc_rollout(self) -> list:
+        """
+        Один роллаут текущей политики без обновления весов.
+        Возвращает список (state_tuple, G_t) для каждого шага.
+        TRPO игнорирует valid_actions при выборе действия.
+        """
+        obs, info = self.env.reset(random_init=False)
+        trajectory = []
+
+        while True:
+            state_tuple = tuple(tuple(d) for d in info["state"])
+            action, _ = self.select_action(obs, self.action_space, training=True)
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            trajectory.append((state_tuple, reward))
+            if terminated or truncated:
+                break
+
+        T = len(trajectory)
+        returns = [0.0] * T
+        G = 0.0
+        for t in reversed(range(T)):
+            G = trajectory[t][1] + self.gamma * G
+            returns[t] = G
+
+        return [(trajectory[t][0], returns[t]) for t in range(T)]
+
+    def _estimate_value_table(self) -> np.ndarray:
+        """
+        MC-оценка V(s): K роллаутов текущей политики.
+
+        V(s) = 0 в начале каждой итерации (не накапливается).
+        Инкрементальное среднее по K траекториям:
+            visit_count[s] += 1
+            V[s] += (G_t - V[s]) / visit_count[s]
+
+        Возвращает таблицу V размером num_sticks^num_disks.
+        """
+        num_states = self.num_sticks ** self.num_disks
+        V = np.zeros(num_states, dtype=np.float64)
+        n = np.zeros(num_states, dtype=np.int64)
+
+        if self.env is None:
+            return V
+
+        for _ in range(self.mc_episodes):
+            rollout = self._run_mc_rollout()
+            for state_tuple, G_t in rollout:
+                idx = state_to_index(state_tuple, self.num_sticks)
+                n[idx] += 1
+                V[idx] += (G_t - V[idx]) / n[idx]
+
+        return V
+
+    def _compute_advantages(
+        self,
+        states: torch.Tensor,
+        returns: torch.Tensor,
+        V: np.ndarray,
+    ) -> Tuple[torch.Tensor, float]:
+        """
+        Advantages = G_t - V(s_t) с табличным бейзлайном.
+        Возвращает (advantages_tensor, value_mse) для логирования.
+        """
+        states_np = states.detach().cpu().numpy()
+        baseline = np.zeros(states_np.shape[0], dtype=np.float32)
+        for i in range(states_np.shape[0]):
+            state = observation_to_state(states_np[i])
+            baseline[i] = V[state_to_index(state, self.num_sticks)]
+
+        returns_np = returns.detach().cpu().numpy()
+        value_mse = float(np.mean((baseline - returns_np) ** 2))
+
+        baseline_t = torch.as_tensor(baseline, dtype=torch.float32, device=states.device)
+        adv = returns - baseline_t
         if self.advantage_norm and adv.numel() > 1:
             adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
-        return adv
+        return adv, value_mse
 
     def _surrogate_and_kl(
         self,
@@ -184,10 +239,6 @@ class TRPOAgent(BaseAgent):
         old_logp: torch.Tensor,
         adv: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        surrogate = mean( exp(new_logp-old_logp) * adv )
-        kl (MC)    = mean( old_logp - new_logp )  ≈ KL(pi_old || pi_new)
-        """
         new_logp = self.policy_network.get_log_probs(states, actions_idx, None)
         ratio = torch.exp(new_logp - old_logp)
         surrogate = (ratio * adv).mean()
@@ -253,10 +304,13 @@ class TRPOAgent(BaseAgent):
 
     def update(self) -> Dict[str, float]:
         states, actions_idx, old_logp = self._build_batch_tensors()
-
         returns = self._compute_mc_returns()
-        value_loss = self._fit_value(states, returns)
-        adv = self._compute_advantages(states, returns)
+
+        # 1. MC-оценка V(s): K роллаутов, V сбрасывается в 0 каждую итерацию
+        V = self._estimate_value_table()
+
+        # 2. Advantages = G_t - V(s_t)
+        adv, value_loss = self._compute_advantages(states, returns, V)
 
         old_params = self._flat_params(self.policy_network)
 

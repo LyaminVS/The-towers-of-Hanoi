@@ -136,6 +136,8 @@ def main():
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1),
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
+        "num_sticks": settings.NUM_STICKS,
+        "mc_episodes": getattr(settings, "BASELINE_MC_EPISODES", 5),
     }
 
     agent = create_agent(settings.AGENT_METHOD, obs_dim, action_space, agent_config)

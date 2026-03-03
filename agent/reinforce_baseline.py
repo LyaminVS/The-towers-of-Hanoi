@@ -1,8 +1,13 @@
 """
-REINFORCE с baseline — уменьшение дисперсии через вычитание V̂(s).
+REINFORCE с baseline — уменьшение дисперсии через вычитание V(s).
 
-Baseline: линейная регрессия V̂(s; w, b) = wᵀ s + b,
-обновляемая по MSE-градиенту после каждого эпизода.
+Baseline: табличная оценка V(s), обновляемая методом Монте-Карло.
+Таблица проиндексирована состояниями: V[state_to_index(s)] = V̂(s).
+
+MC-обновление после каждого эпизода (до обновления политики):
+    - V(s) = 0 для всех s в начале каждой итерации (сбрасывается)
+    - K роллаутов текущей политики (training=True, без градиентов)
+    - Инкрементальное среднее: V(s) += (G_t - V(s)) / visit_count(s)
 """
 
 import os
@@ -12,26 +17,65 @@ import numpy as np
 
 from .base_agent import BaseAgent
 from .policy import PolicyNetwork
-from env.actions import action_to_index, index_to_action
+from env.actions import action_to_index, index_to_action, get_valid_actions
+from env.state import observation_to_state
 
 
 def _valid_actions_mask(valid_actions: list, action_space: list, device) -> torch.Tensor:
-    """Булева маска допустимых действий: True для действий из valid_actions."""
+    """Булева маска допустимых действий."""
     mask = torch.zeros(len(action_space), dtype=torch.bool, device=device)
     for a in valid_actions:
-        idx = action_space.index(a)
-        mask[idx] = True
+        mask[action_space.index(a)] = True
     return mask
+
+
+def state_to_index(state: tuple, num_sticks: int = 3) -> int:
+    """
+    Состояние → уникальный целочисленный индекс.
+
+    State[i] = (stick, height). Индекс определяется только stick[i] —
+    высоты однозначно выводятся из назначений палок.
+
+    Index = stick[0] * num_sticks^0 + stick[1] * num_sticks^1 + ...
+    (смешанная система счисления по основанию num_sticks)
+    """
+    index = 0
+    base = 1
+    for stick, _height in state:
+        index += stick * base
+        base *= num_sticks
+    return index
+
+
+def index_to_state(index: int, num_disks: int, num_sticks: int = 3) -> tuple:
+    """
+    Целочисленный индекс → состояние.
+
+    Восстанавливает stick-назначения, затем вычисляет высоты:
+        height[i] = кол-во дисков j < i на той же палке
+    (диски с меньшим индексом больше и лежат ниже).
+    """
+    sticks = []
+    remaining = index
+    for _ in range(num_disks):
+        sticks.append(remaining % num_sticks)
+        remaining //= num_sticks
+
+    heights = [
+        sum(1 for j in range(i) if sticks[j] == sticks[i])
+        for i in range(num_disks)
+    ]
+    return tuple((sticks[i], heights[i]) for i in range(num_disks))
 
 
 class REINFORCEBaselineAgent(BaseAgent):
     """
-    REINFORCE + линейный baseline:
-        ∇J(θ) = E[Σ_t (G_t - V̂(s_t)) ∇ log π(a|s)]
+    REINFORCE + табличный MC-baseline:
+        ∇J(θ) = E[Σ_t (G_t - V(s_t)) ∇ log π(a|s)]
 
-    V̂(s; w, b) = wᵀ s + b — линейная регрессия без нейросети.
-    Веса w и b обновляются по градиенту MSE после каждого эпизода:
-        L = (1/T) Σ_t (V̂(s_t) - G_t)²
+    V(s) — таблица размером num_sticks^num_disks.
+    Обновляется каждый эпизод: K MC-роллаутов → инкрементальное среднее.
+    Требует self.env — ссылку на среду, устанавливаемую через trainer.
     """
 
     def __init__(self, observation_dim: int, action_space: list, config: dict):
@@ -42,25 +86,33 @@ class REINFORCEBaselineAgent(BaseAgent):
         self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
         lr = config.get("learning_rate", 1e-3)
         self.policy_optimizer = torch.optim.Adam(self.policy_network.parameters(), lr=lr)
-        self.optimizer = None
         self.gamma = config.get("discount_factor", 0.99)
-        self.baseline_lr = config.get("baseline_lr", 1e-2)
 
-        # Линейный бейзлайн: V̂(s) = wᵀ s + bias
-        self.baseline_weights = np.zeros(observation_dim + 1, dtype=np.float64)
+        self.num_disks = observation_dim // 2
+        self.num_sticks = config.get("num_sticks", 3)
+        self.mc_episodes = config.get("mc_episodes", 5)
+
+        # Ссылка на среду для MC-роллаутов. Устанавливается из trainer.py.
+        self.env = None
 
         self.saved_valid_actions: list = []
         self._last_valid_actions: list = []
 
+    # ------------------------------------------------------------------
+    # Trajectory management
+    # ------------------------------------------------------------------
+
     def store_transition(self, state, action, reward: float, log_prob: float) -> None:
-        # возможно в базовом классе это стоит добавить
         super().store_transition(state, action, reward, log_prob)
         self.saved_valid_actions.append(self._last_valid_actions)
 
     def reset_trajectory(self) -> None:
-        # возможно в базовом классе это стоит добавить
         super().reset_trajectory()
         self.saved_valid_actions.clear()
+
+    # ------------------------------------------------------------------
+    # Action selection
+    # ------------------------------------------------------------------
 
     def select_action(self, state, valid_actions: list, training: bool = True):
         self._last_valid_actions = list(valid_actions)
@@ -81,8 +133,14 @@ class REINFORCEBaselineAgent(BaseAgent):
                 action_idx = probs.argmax(dim=-1).item()
 
         action = index_to_action(action_idx, self.action_space)
-        log_prob = self.policy_network.get_log_probs(state_t, [action_idx], mask_batch).item()
+        log_prob = self.policy_network.get_log_probs(
+            state_t, [action_idx], mask_batch
+        ).item()
         return action, log_prob
+
+    # ------------------------------------------------------------------
+    # Returns & baseline
+    # ------------------------------------------------------------------
 
     def _compute_returns(self) -> np.ndarray:
         rewards = self.saved_rewards
@@ -94,22 +152,71 @@ class REINFORCEBaselineAgent(BaseAgent):
             returns[t] = G
         return returns
 
-    def _predict_baseline(self, states_np: np.ndarray) -> np.ndarray:
-        """V̂(s) = wᵀ s + bias для батча состояний shape (T, obs_dim)."""
-        return states_np @ self.baseline_weights[:-1] + self.baseline_weights[-1]
+    def _predict_baseline(self, observations: list, V: np.ndarray) -> np.ndarray:
+        """V(s) для каждого наблюдения из сохранённой траектории."""
+        values = np.zeros(len(observations), dtype=np.float64)
+        for i, obs in enumerate(observations):
+            state = observation_to_state(obs)
+            values[i] = V[state_to_index(state, self.num_sticks)]
+        return values
 
-    def _update_baseline(self, states_np: np.ndarray, returns: np.ndarray) -> float:
+    # ------------------------------------------------------------------
+    # Monte Carlo estimation of V(s)
+    # ------------------------------------------------------------------
+
+    def _run_mc_rollout(self) -> list:
         """
-        Один градиентный шаг по MSE: L = (1/T) Σ (V̂(s_t) - G_t)².
-        Обновляет baseline_weights и baseline_bias.
-        Возвращает MSE до обновления (для логирования).
+        Один роллаут текущей политики без обновления весов.
+        Возвращает список (state_tuple, G_t) — пары (состояние, дисконтированный доход).
         """
-        T = len(returns)
-        residuals = self._predict_baseline(states_np) - returns  # (T,)
-        mse = float(np.mean(residuals ** 2))
-        X = np.concatenate([states_np, np.ones((states_np.shape[0], 1))], axis=1)
-        self.baseline_weights = np.linalg.pinv(X.T @ X) @ X.T @ returns
-        return mse
+        obs, info = self.env.reset(random_init=True)
+        trajectory = []  # [(state_tuple, reward), ...]
+
+        while True:
+            state_tuple = tuple(tuple(d) for d in info["state"])
+            valid_actions = get_valid_actions(state_tuple, self.env.num_sticks)
+            action, _ = self.select_action(obs, valid_actions, training=True)
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            trajectory.append((state_tuple, reward))
+            if terminated or truncated:
+                break
+
+        # Дисконтированные доходы G_t = r_t + γ r_{t+1} + ...
+        T = len(trajectory)
+        returns = [0.0] * T
+        G = 0.0
+        for t in reversed(range(T)):
+            G = trajectory[t][1] + self.gamma * G
+            returns[t] = G
+
+        return [(trajectory[t][0], returns[t]) for t in range(T)]
+
+    def _update_value_table(self) -> np.ndarray:
+        """
+        MC-оценка V(s): mc_episodes роллаутов → every-visit инкрементальное среднее.
+
+        V(s) = 0 в начале каждой итерации (сбрасывается, не накапливается).
+        Возвращает таблицу V размером num_sticks^num_disks.
+        """
+        num_states = self.num_sticks ** self.num_disks
+        V = np.zeros(num_states, dtype=np.float64)
+        n = np.zeros(num_states, dtype=np.int64)
+
+        if self.env is None:
+            return V
+
+        for _ in range(self.mc_episodes):
+            rollout = self._run_mc_rollout()
+            for state_tuple, G_t in rollout:
+                idx = state_to_index(state_tuple, self.num_sticks)
+                n[idx] += 1
+                V[idx] += (G_t - V[idx]) / n[idx]
+
+        return V
+
+    # ------------------------------------------------------------------
+    # Policy update
+    # ------------------------------------------------------------------
 
     def update(self) -> dict:
         if not self.saved_states:
@@ -117,16 +224,17 @@ class REINFORCEBaselineAgent(BaseAgent):
 
         device = next(self.policy_network.parameters()).device
         returns = self._compute_returns()
-        states_np = np.asarray(self.saved_states, dtype=np.float64)
 
-        # Advantages вычисляем с текущим (ещё не обновлённым) бейзлайном
-        advantages = returns - self._predict_baseline(states_np)
+        # 1. MC-оценка V(s) до обновления политики (V сбрасывается каждую итерацию)
+        V = self._update_value_table()
+
+        # 2. Advantages = G_t - V(s_t)
+        baseline_values = self._predict_baseline(self.saved_states, V)
+        advantages = returns - baseline_values
         advantages_t = torch.tensor(advantages, dtype=torch.float32, device=device)
+        baseline_mse = float(np.mean((baseline_values - returns) ** 2))
 
-        # Обновляем линейный бейзлайн по MSE
-        baseline_mse = self._update_baseline(states_np, returns)
-
-        # Policy gradient: L(θ) = -(1/T) Σ_t A_t * log π(a_t | s_t)
+        # 3. Policy gradient: L(θ) = -(1/T) Σ_t A_t * log π(a_t | s_t)
         policy_loss = torch.tensor(0.0, device=device)
         n = len(self.saved_states)
         for t in range(n):
@@ -148,7 +256,6 @@ class REINFORCEBaselineAgent(BaseAgent):
             policy_loss = policy_loss - advantages_t[t] * log_prob
 
         policy_loss = policy_loss / max(n, 1)
-
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
         self.policy_optimizer.step()
@@ -161,11 +268,14 @@ class REINFORCEBaselineAgent(BaseAgent):
             "mean_return": mean_return,
         }
 
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
     def save(self, path: str) -> None:
         save_dict = {
             "policy_network": self.policy_network.state_dict(),
             "policy_optimizer": self.policy_optimizer.state_dict(),
-            "baseline_weights": self.baseline_weights,
         }
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         torch.save(save_dict, path)
@@ -178,5 +288,3 @@ class REINFORCEBaselineAgent(BaseAgent):
             self.policy_network.load_state_dict(checkpoint["policy_network"])
         if "policy_optimizer" in checkpoint:
             self.policy_optimizer.load_state_dict(checkpoint["policy_optimizer"])
-        if "baseline_weights" in checkpoint:
-            self.baseline_weights = checkpoint["baseline_weights"]

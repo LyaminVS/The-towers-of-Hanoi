@@ -61,6 +61,10 @@ def train(
     history = []
     steps_buffer = []  # для скользящего среднего
 
+    # Передаём среду агентам, которым нужны MC-роллауты (например, REINFORCEBaselineAgent)
+    if hasattr(agent, "env") and agent.env is None:
+        agent.env = env
+
     for ep in range(num_episodes):
         total_reward, num_steps, success, rewards, update_metrics = run_episode(
             env, agent, max_steps_per_episode, random_init=random_init

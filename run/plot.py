@@ -9,7 +9,7 @@ def moving_average(data, window=50):
     if len(data) < window: return data
     return np.convolve(data, np.ones(window)/window, mode='valid')
 
-def plot_training_results(history_path="logs/training_history.json"):
+def plot_training_results(history_path="training_history_phase2.json"):
     if not os.path.exists(history_path):
         print(f"Error: {history_path} not found. Run train.py first.")
         return
