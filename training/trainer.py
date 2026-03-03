@@ -32,15 +32,21 @@ def run_episode(env, agent, max_steps: int, random_init: bool = False):
 
 def _compute_adaptive_entropy_coef(
     avg_steps: float,
-    steps_min: float,
+    steps_optimal: float,
     steps_max: float,
     coef_min: float,
     coef_max: float,
 ) -> float:
-    """Линейная интерполяция: много шагов -> max coef, мало шагов -> min coef."""
-    if steps_max <= steps_min:
-        return coef_max
-    t = (avg_steps - steps_min) / (steps_max - steps_min)
+    """
+    Энтропия минимальна при steps = 2^n - 1 (оптимум).
+    steps < оптимальных (провал) -> max coef (больше исследования).
+    steps > оптимальных -> линейно от min до max.
+    """
+    if avg_steps < steps_optimal:
+        return coef_max  # провал — больше исследования
+    if steps_max <= steps_optimal:
+        return coef_min
+    t = (avg_steps - steps_optimal) / (steps_max - steps_optimal)
     t = max(0.0, min(1.0, t))
     return coef_min + (coef_max - coef_min) * t
 
@@ -76,7 +82,7 @@ def train(
             avg_steps = sum(steps_buffer) / len(steps_buffer)
             agent.entropy_coef = _compute_adaptive_entropy_coef(
                 avg_steps,
-                steps_min=steps_optimal,
+                steps_optimal=steps_optimal,
                 steps_max=float(max_steps_per_episode),
                 coef_min=entropy_coef_min,
                 coef_max=entropy_coef_max,
