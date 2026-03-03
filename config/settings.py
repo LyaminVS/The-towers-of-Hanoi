@@ -59,7 +59,7 @@ EVAL_NUM_EPISODES = 10  # кол-во эпизодов для оценки
 EVAL_RENDER = False  # визуализация при оценке
 EVAL_SAVE_RESULTS = None  # путь для сохранения результатов (None — не сохранять)
 EVAL_PARAMS_FILE = "eval_params.json"  # файл для save/load параметров оценки
-EVAL_SAMPLE = True  # если True, во время оценки используется семплирование, иначе argmax
+EVAL_SAMPLE = False  # если True, во время оценки используется семплирование, иначе argmax
 
 # --- Логирование ---
 LOG_FILE = None  # путь к файлу логов (None — только консоль)
