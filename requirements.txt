@@ -1,12 +1,17 @@
-# Tower of Hanoi RL
-# numpy — для массивов и вычислений
-numpy>=1.24.0
+# Tower of Hanoi RL — зависимости
+# Python: 3.10+
+# Установка: pip install -r requirements.txt
+# PyTorch с GPU: https://pytorch.org/get-started/locally/
 
-# PyTorch — для policy/value сетей и обучения
+# Ядро обучения
 torch>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
 
-# gymnasium — опционально, если нужен стандартный Gym API
-# gymnasium>=0.29.0
-matplotlib
+# Визуализация и оценка
+pygame>=2.5.0
 Pillow>=9.0.0
-pygame>=2.0.0
+matplotlib>=3.7.0
+
+# Тесты (опционально)
+pytest>=7.0.0
