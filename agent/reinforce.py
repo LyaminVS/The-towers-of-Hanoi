@@ -9,6 +9,7 @@ import numpy as np
 from .base_agent import BaseAgent
 from .policy import PolicyNetwork
 from env.actions import action_to_index, index_to_action
+from utils.device import get_device
 
 
 def _valid_actions_mask(valid_actions: list, action_space: list, device) -> torch.Tensor:
@@ -31,7 +32,8 @@ class REINFORCEAgent(BaseAgent):
         self.action_space = action_space
         action_dim = len(action_space)
         hidden_dims = config.get("hidden_dims", [64, 64])
-        self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
+        self.device = get_device(config.get("device"))
+        self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims).to(self.device)
         self.optimizer = None
         self.policy_optimizer = torch.optim.Adam(
             self.policy_network.parameters(),
@@ -39,9 +41,9 @@ class REINFORCEAgent(BaseAgent):
         )
         self.gamma = config.get("discount_factor", 0.99)
         self.entropy_coef = config.get("entropy_coef", 0.01)
+        self.max_grad_norm = config.get("max_grad_norm")  # None = без клиппинга
         self.value_network = None
         self.saved_valid_actions: list = []
-        self._last_valid_actions: list = []
         self._last_valid_actions: list = []
 
     def store_transition(self, state, action, reward: float, log_prob: float) -> None:
@@ -75,6 +77,7 @@ class REINFORCEAgent(BaseAgent):
         return action, log_prob
 
     def _compute_returns(self) -> list:
+        """Дисконтированные return'ы G_t до конца эпизода (список длины T)."""
         rewards = self.saved_rewards
         T = len(rewards)
         returns = []
@@ -84,17 +87,16 @@ class REINFORCEAgent(BaseAgent):
             returns.append(G)
         return list(reversed(returns))
 
-    def update(self) -> dict:
-        if not self.saved_states:
-            return {"policy_loss": 0.0, "mean_return": 0.0}
-
+    def _compute_policy_loss_and_entropy(self, weight_tensor: torch.Tensor) -> tuple:
+        """
+        Считает policy gradient loss и среднюю энтропию по траектории.
+        weight_tensor: тензор формы (n,) — веса для каждого шага (returns или advantages).
+        Возвращает (policy_loss, mean_entropy) — оба тензоры-скаляры.
+        """
         device = next(self.policy_network.parameters()).device
-        returns = self._compute_returns()
-        returns_t = torch.tensor(returns, dtype=torch.float32, device=device)
-
-        policy_loss = 0.0
-        entropy_sum = 0.0
         n = len(self.saved_states)
+        policy_loss = torch.tensor(0.0, device=device)
+        entropy_sum = torch.tensor(0.0, device=device)
         for t in range(n):
             state = self.saved_states[t]
             action = self.saved_actions[t]
@@ -104,15 +106,30 @@ class REINFORCEAgent(BaseAgent):
             state_t = torch.as_tensor(np.asarray(state), dtype=torch.float32, device=device).unsqueeze(0)
             mask_batch = mask.unsqueeze(0)
             log_prob = self.policy_network.get_log_probs(state_t, [action_idx], mask_batch).squeeze(0)
-            policy_loss = policy_loss - (returns_t[t] * log_prob).sum()
+            policy_loss = policy_loss - (weight_tensor[t] * log_prob).sum()
             entropy_sum = entropy_sum + self.policy_network.get_entropy(state_t, mask_batch).sum()
         policy_loss = policy_loss / max(n, 1)
         mean_entropy = entropy_sum / max(n, 1)
+        return policy_loss, mean_entropy
 
+    def update(self) -> dict:
+        if not self.saved_states:
+            return {"policy_loss": 0.0, "mean_return": 0.0}
+
+        returns = self._compute_returns()
+        device = next(self.policy_network.parameters()).device
+        returns_t = torch.tensor(returns, dtype=torch.float32, device=device)
+
+        policy_loss, mean_entropy = self._compute_policy_loss_and_entropy(returns_t)
         total_loss = policy_loss - self.entropy_coef * mean_entropy
 
         self.policy_optimizer.zero_grad()
         total_loss.backward()
+        if self.max_grad_norm is not None:
+            torch.nn.utils.clip_grad_norm_(
+                self.policy_network.parameters(),
+                self.max_grad_norm,
+            )
         self.policy_optimizer.step()
 
         mean_return = returns[0] if returns else 0.0
