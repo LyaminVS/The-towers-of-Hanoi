@@ -31,8 +31,9 @@ class REINFORCEBaselineAgent(BaseAgent):
         self.action_space = action_space
         action_dim = len(action_space)
         hidden_dims = config.get("hidden_dims", [64, 64])
+        value_ridge = float(config.get("value_ridge", 1e-3))
         self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
-        self.value_network = ValueNetwork(observation_dim, hidden_dims)
+        self.value_network = ValueNetwork(observation_dim, hidden_dims, value_ridge=value_ridge)
         lr = config.get("learning_rate", 1e-3)
         value_lr = config.get("value_lr", 1e-3)
         self.policy_optimizer = torch.optim.Adam(self.policy_network.parameters(), lr=lr)

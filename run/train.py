@@ -2,6 +2,9 @@
 import sys
 import argparse
 from pathlib import Path
+import random
+import numpy as np
+import torch
 
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -17,6 +20,8 @@ from utils.params import save_history
 
 def parse_args() -> object:
     parser = argparse.ArgumentParser(description="Train Tower of Hanoi agent")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility (default: from settings.SEED)")
     parser.add_argument("--num_disks", type=int, default=None,
                         help="Override NUM_DISKS from config")
     parser.add_argument("--num_sticks", type=int, default=None,
@@ -58,6 +63,8 @@ def parse_args() -> object:
                         help="Override REINFORCE_ENTROPY_COEF_MAX")
     parser.add_argument("--entropy_window", type=int, default=None,
                         help="Override REINFORCE_ENTROPY_WINDOW")
+    parser.add_argument("--value_ridge", type=float, default=None,
+                        help="Override VALUE_RIDGE from config (regularization for fit_ols)")
     parser.add_argument("--log_interval", type=int, default=None,
                         help="Override LOG_INTERVAL from config")
     parser.add_argument("--history_path", type=str, default=None,
@@ -68,7 +75,22 @@ def parse_args() -> object:
 def main():
     args = parse_args()
 
-    # Переопределение параметров из CLI
+    # 0. Установка seed для воспроизводимости — ДО всех инициализаций!
+    seed = args.seed if args.seed is not None else getattr(settings, "SEED", 42)
+    if seed is not None:
+        random.seed(seed)  # Встроенный Python random модуль
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            # Гарантируем детерминизм на GPU (может быть медленнее)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+        # Убедимся что PYTHONHASHSEED совпадает
+        import os
+        os.environ['PYTHONHASHSEED'] = str(seed)
+    
+    # Теперь переопределяем параметры из CLI (после установки seed)
     if args.num_disks is not None:
         settings.NUM_DISKS = args.num_disks
     if args.num_sticks is not None:
@@ -91,6 +113,8 @@ def main():
         settings.REINFORCE_ENTROPY_COEF_MAX = args.entropy_coef_max
     if args.entropy_window is not None:
         settings.REINFORCE_ENTROPY_WINDOW = args.entropy_window
+    if args.value_ridge is not None:
+        settings.VALUE_RIDGE = args.value_ridge
     if args.log_interval is not None:
         settings.LOG_INTERVAL = args.log_interval
     if args.no_entropy_adaptive:
@@ -103,12 +127,9 @@ def main():
     )
     
     entropy_adaptive = (args.entropy_adaptive or getattr(settings, "REINFORCE_ENTROPY_ADAPTIVE", False)) and not args.no_entropy_adaptive
-    if args.no_entropy_adaptive:
-        settings.REINFORCE_ENTROPY_ADAPTIVE = False
-    elif args.entropy_adaptive:
-        settings.REINFORCE_ENTROPY_ADAPTIVE = True
-
+    
     log_message(f"=== Starting Training Session ===")
+    log_message(f"SEED: {seed} (deterministic mode)")
     log_message(f"Method: {settings.AGENT_METHOD} | Disks: {settings.NUM_DISKS}")
     if entropy_adaptive:
         log_message(f"Entropy adaptive: min={getattr(settings, 'REINFORCE_ENTROPY_COEF_MIN', 0.01)}, max={getattr(settings, 'REINFORCE_ENTROPY_COEF_MAX', 0.2)}")
@@ -135,6 +156,7 @@ def main():
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1),
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
+        "value_ridge": getattr(settings, "VALUE_RIDGE", 1e-3),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
     }
 

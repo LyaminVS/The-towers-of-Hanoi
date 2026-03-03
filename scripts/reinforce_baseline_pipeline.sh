@@ -9,6 +9,9 @@ mkdir -p logs
 # ========== ПАРАМЕТРЫ (как в config/settings.py) ==========
 # Меняй значения здесь, не трогая settings.py
 
+# --- Random Seed ---
+SEED=42  # Для воспроизводимости результатов
+
 # --- Игра ---
 NUM_DISKS=4
 NUM_STICKS=3
@@ -31,6 +34,7 @@ REWARD_CORRECT_PLACEMENT_PHASE2=100
 MAX_STEPS=200
 LOG_INTERVAL=100
 CHECKPOINT_INTERVAL=1000
+VALUE_RIDGE=0.001
 
 # --- Фаза 1 ---
 NUM_EPISODES_PHASE1=20000
@@ -60,6 +64,7 @@ echo "  Эпизодов: $NUM_EPISODES_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
@@ -74,6 +79,7 @@ python run/train.py \
     $RANDOM_INIT_PHASE1 \
     $ENTROPY_ADAPTIVE_PHASE1 \
     --entropy_coef "$ENTROPY_COEF_PHASE1" \
+    --value_ridge "$VALUE_RIDGE" \
     --save_model "$MODEL_PHASE1" \
     --history_path "$HISTORY_PHASE1"
 
@@ -87,6 +93,7 @@ echo "  Загрузка: $MODEL_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
@@ -104,6 +111,7 @@ python run/train.py \
     --entropy_coef_min "$ENTROPY_COEF_MIN_PHASE2" \
     --entropy_coef_max "$ENTROPY_COEF_MAX_PHASE2" \
     --entropy_window "$ENTROPY_WINDOW_PHASE2" \
+    --value_ridge "$VALUE_RIDGE" \
     --save_model "$MODEL_PHASE2" \
     --history_path "$HISTORY_PHASE2"
 

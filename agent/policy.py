@@ -104,9 +104,10 @@ class ValueNetwork(nn.Module):
     Эквивалент линейной регрессии (по сути, baseline как линейная модель).
     """
 
-    def __init__(self, observation_dim: int, hidden_dims: list):
+    def __init__(self, observation_dim: int, hidden_dims: list, value_ridge: float = 1e-3):
         super().__init__()
         self.observation_dim = observation_dim
+        self.value_ridge = value_ridge
 
         # Единственный линейный слой -> скаляр V(s)
         self.linear = nn.Linear(observation_dim, 1)
@@ -128,3 +129,60 @@ class ValueNetwork(nn.Module):
 
         v = self.linear(state)          # [B, 1]
         return v.squeeze(-1)            # [B]
+
+    @torch.no_grad()
+    def fit_ols(self, X: torch.Tensor, y: torch.Tensor, ridge: float | None = None) -> float:
+        """
+        Closed-form linear regression using pseudo-inverse (pinv).
+        
+        Формула: θ = pinv(X) @ y, где X = [states, 1] для учета bias.
+        С регуляризацией: θ = pinv(X^T X + ridge*I) @ X^T @ y
+        
+        Input:
+            X — состояния, shape [n, obs_dim]
+            y — целевые значения (returns), shape [n]
+            ridge — коэффициент L2 регуляризации (если None, использует self.value_ridge)
+        Output:
+            loss (MSE) после подгонки
+        """
+        if ridge is None:
+            ridge = self.value_ridge
+        
+        device = next(self.parameters()).device
+        X = X.to(device=device, dtype=torch.float32)
+        y = y.to(device=device, dtype=torch.float32)
+
+        if X.dim() == 1:
+            X = X.unsqueeze(0)
+        if y.dim() == 0:
+            y = y.unsqueeze(0)
+
+        n = X.shape[0]
+        ones = torch.ones((n, 1), device=device, dtype=torch.float32)
+        Xb = torch.cat([X, ones], dim=1)  # [n, obs_dim+1]
+
+        # Closed-form solution with regularization:
+        # theta = (X^T X + ridge*I)^(-1) X^T y
+        # Using pseudo-inverse: theta = pinv(X^T X + ridge*I) @ X^T @ y
+        
+        XtX = Xb.T @ Xb  # [obs_dim+1, obs_dim+1]
+        d = XtX.shape[0]
+        
+        # Add ridge regularization
+        XtX_reg = XtX + ridge * torch.eye(d, device=device, dtype=torch.float32)
+        
+        Xty = Xb.T @ y  # [obs_dim+1]
+        
+        # Use pseudo-inverse for robustness
+        theta = torch.linalg.pinv(XtX_reg) @ Xty  # [obs_dim+1]
+        
+        w = theta[:-1]  # [obs_dim]
+        b = theta[-1]   # scalar
+        
+        self.linear.weight.copy_(w.view(1, -1))
+        self.linear.bias.copy_(b.view(1))
+        
+        # Compute loss for monitoring
+        preds = self.forward(X)  # [n]
+        loss = torch.mean((preds - y) ** 2).item()
+        return float(loss)

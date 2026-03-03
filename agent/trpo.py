@@ -68,8 +68,9 @@ class TRPOAgent(BaseAgent):
         action_dim = len(action_space)
 
         hidden_dims = config.get("hidden_dims", [64, 64])
+        value_ridge = float(config.get("value_ridge", 1e-3))
         self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
-        self.value_network = ValueNetwork(observation_dim, hidden_dims)
+        self.value_network = ValueNetwork(observation_dim, hidden_dims, value_ridge=value_ridge)
 
         self.gamma = float(config.get("discount_factor", 0.99))
 
@@ -258,6 +259,10 @@ class TRPOAgent(BaseAgent):
         value_loss = self._fit_value(states, returns)
         adv = self._compute_advantages(states, returns)
 
+        # Compute entropy for monitoring
+        with torch.no_grad():
+            policy_entropy = self.policy_network.get_entropy(states).mean().item()
+
         old_params = self._flat_params(self.policy_network)
 
         with torch.no_grad():
@@ -292,6 +297,8 @@ class TRPOAgent(BaseAgent):
                 "policy_kl_new": old_kl,
                 "value_loss": value_loss,
                 "cg_shs": shs_val,
+                "loss": value_loss,  # For logger
+                "entropy": policy_entropy,  # For logger
             }
 
         max_step = np.sqrt((2.0 * self.max_kl) / (shs_val + 1e-12))
@@ -319,6 +326,8 @@ class TRPOAgent(BaseAgent):
             "policy_kl_new": float(kl_new.item()),
             "value_loss": value_loss,
             "cg_shs": shs_val,
+            "loss": value_loss,  # For logger
+            "entropy": policy_entropy,  # For logger
         }
 
         self.reset_trajectory()

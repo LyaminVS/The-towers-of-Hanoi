@@ -5,6 +5,9 @@
 в run/train.py, run/evaluate.py, run/play.py.
 """
 
+# --- Random Seed ---
+SEED = 42  # Для воспроизводимости результатов (None = случайный seed)
+
 # --- Параметры игры ---
 NUM_DISKS = 4  # количество дисков (3 — минимум, 5+ — сложнее)
 NUM_STICKS = 3  # количество палок (всегда 3 для классической задачи)
@@ -48,6 +51,9 @@ TRPO_CG_ITERS = 10
 TRPO_BACKTRACK_ITERS = 10
 TRPO_BACKTRACK_COEF = 0.5
 TRPO_HIDDEN_DIMS = [64, 64]
+
+# --- Value Network (baseline) ---
+VALUE_RIDGE = 1e-3  # коэффициент регуляризации (L2) для fit_ols (closed-form linear regression)
 
 # --- Параметры оценки ---
 EVAL_MODEL_PATH = "model.pth"  # путь к загружаемой модели

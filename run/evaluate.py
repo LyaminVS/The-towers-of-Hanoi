@@ -9,6 +9,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
+import random
+import numpy as np
+import torch
 import pygame
 from config import settings
 from env.environment import create_env
@@ -23,6 +26,8 @@ def parse_args() -> object:
     Парсинг аргументов командной строки.
     """
     parser = argparse.ArgumentParser(description="Evaluate trained Tower of Hanoi agent")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility (default: from settings.SEED)")
     parser.add_argument("--load_model", type=str, default=settings.EVAL_MODEL_PATH)
     parser.add_argument("--num_disks", type=int, default=settings.NUM_DISKS)
     parser.add_argument("--agent_method", type=str, default=settings.AGENT_METHOD,
@@ -121,6 +126,21 @@ def evaluate(env, agent, num_episodes: int = 10, render: bool = False, delay_ms:
 def main() -> None:
     args = parse_args()
 
+    # 0. Установка seed для воспроизводимости — ДО всех инициализаций!
+    seed = args.seed if args.seed is not None else getattr(settings, "SEED", 42)
+    if seed is not None:
+        random.seed(seed)  # Встроенный Python random модуль
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            # Гарантируем детерминизм на GPU (может быть медленнее)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+        # Убедимся что PYTHONHASHSEED совпадает
+        import os
+        os.environ['PYTHONHASHSEED'] = str(seed)
+
     reward_scheme = Reward.from_config(settings)
 
     env = create_env(
@@ -138,6 +158,7 @@ def main() -> None:
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
+        "value_ridge": getattr(settings, "VALUE_RIDGE", 1e-3),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
     }
 

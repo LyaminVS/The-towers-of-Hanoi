@@ -9,8 +9,11 @@ mkdir -p logs
 # ========== ПАРАМЕТРЫ (как в config/settings.py) ==========
 # Меняй значения здесь, не трогая settings.py
 
+# --- Random Seed ---
+SEED=42  # Для воспроизводимости результатов
+
 # --- Игра ---
-NUM_DISKS=4
+NUM_DISKS=3
 NUM_STICKS=3
 
 # --- Метод агента ---
@@ -31,15 +34,17 @@ REWARD_CORRECT_PLACEMENT_PHASE2=100
 MAX_STEPS=200
 LOG_INTERVAL=100
 CHECKPOINT_INTERVAL=1000
+VALUE_RIDGE=0.001
+# TRPO_MAX_KL=0.01  # KL divergence constraint for TRPO (lower = more conservative)
 
 # --- Фаза 1 ---
-NUM_EPISODES_PHASE1=20000
+NUM_EPISODES_PHASE1=2000
 RANDOM_INIT_PHASE1="--random_init"
 ENTROPY_ADAPTIVE_PHASE1="--no-entropy_adaptive"
 ENTROPY_COEF_PHASE1=250
 
 # --- Фаза 2 ---
-NUM_EPISODES_PHASE2=5000
+NUM_EPISODES_PHASE2=1000
 RANDOM_INIT_PHASE2="--no-random_init"
 ENTROPY_ADAPTIVE_PHASE2="--entropy_adaptive"
 ENTROPY_COEF_MIN_PHASE2=0
@@ -60,6 +65,7 @@ echo "  Эпизодов: $NUM_EPISODES_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
@@ -74,6 +80,8 @@ python run/train.py \
     $RANDOM_INIT_PHASE1 \
     $ENTROPY_ADAPTIVE_PHASE1 \
     --entropy_coef "$ENTROPY_COEF_PHASE1" \
+    --value_ridge "$VALUE_RIDGE" \
+    # --max_kl "$TRPO_MAX_KL" \
     --save_model "$MODEL_PHASE1" \
     --history_path "$HISTORY_PHASE1"
 
@@ -87,6 +95,7 @@ echo "  Загрузка: $MODEL_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
@@ -104,6 +113,8 @@ python run/train.py \
     --entropy_coef_min "$ENTROPY_COEF_MIN_PHASE2" \
     --entropy_coef_max "$ENTROPY_COEF_MAX_PHASE2" \
     --entropy_window "$ENTROPY_WINDOW_PHASE2" \
+    --value_ridge "$VALUE_RIDGE" \
+    # --max_kl "$TRPO_MAX_KL" \
     --save_model "$MODEL_PHASE2" \
     --history_path "$HISTORY_PHASE2"
 
