@@ -26,11 +26,11 @@ NUM_EPISODES = 20000  # количество эпизодов обучения
 MAX_STEPS_PER_EPISODE = 200  # лимит шагов (2^n - 1 для n дисков)
 LOG_INTERVAL = 50  # логировать каждые N эпизодов
 CHECKPOINT_INTERVAL = 1000  # сохранять чекпоинт каждые N эпизодов
-RANDOM_INIT = False  # случайное начальное состояние в каждом эпизоде
+RANDOM_INIT = True  # случайное начальное состояние в каждом эпизоде
 
 # --- Выбор метода агента ---
 # "reinforce" | "reinforce_baseline" | "trpo"
-AGENT_METHOD = "trpo"
+AGENT_METHOD = "reinforce_baseline"
 
 # --- REINFORCE ---
 REINFORCE_LR = 1e-3
@@ -40,7 +40,7 @@ REINFORCE_ENTROPY_COEF = 0.01  # коэффициент энтропии для 
 # --- REINFORCE + baseline ---
 REINFORCE_BASELINE_LR = 1e-3
 REINFORCE_BASELINE_VALUE_LR = 1e-2
-REINFORCE_BASELINE_HIDDEN_DIMS = [64, 64]
+REINFORCE_BASELINE_HIDDEN_DIMS = [128, 128]
 
 # --- TRPO ---
 TRPO_MAX_KL = 0.01  # лимит KL-дивергенции
@@ -52,7 +52,7 @@ TRPO_HIDDEN_DIMS = [64, 64]
 # --- Параметры оценки ---
 EVAL_MODEL_PATH = "model.pth"  # путь к загружаемой модели
 EVAL_NUM_EPISODES = 10  # кол-во эпизодов для оценки
-EVAL_RENDER = False  # визуализация при оценке
+EVAL_RENDER = True  # визуализация при оценке
 EVAL_SAVE_RESULTS = None  # путь для сохранения результатов (None — не сохранять)
 EVAL_PARAMS_FILE = "eval_params.json"  # файл для save/load параметров оценки
 EVAL_SAMPLE = False  # если True, во время оценки используется семплирование, иначе argmax
