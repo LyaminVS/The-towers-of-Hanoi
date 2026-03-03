@@ -1,23 +1,27 @@
 """
 REINFORCE с baseline — уменьшение дисперсии через вычитание V(s).
 
-Baseline: табличная оценка V(s), обновляемая методом Монте-Карло.
+Baseline: табличная оценка V(s) по истории последних N траекторий.
 Таблица проиндексирована состояниями: V[state_to_index(s)] = V̂(s).
 
-MC-обновление после каждого эпизода (до обновления политики):
-    - V(s) = 0 для всех s в начале каждой итерации (сбрасывается)
-    - K роллаутов текущей политики (training=True, без градиентов)
-    - Инкрементальное среднее: V(s) += (G_t - V(s)) / visit_count(s)
+Оценка V(s) перед каждым градиентным шагом:
+    1. V(s) = 0, c(s) = 0 для всех s
+    2. for trajectory in trajectory_history:
+           for (s, G) in trajectory:
+               V(s) += (G - V(s)) / (c(s) + 1)
+               c(s) += 1
 """
 
 import os
+from collections import deque
+
 import torch
 import torch.nn.functional as F
 import numpy as np
 
 from .base_agent import BaseAgent
 from .policy import PolicyNetwork
-from env.actions import action_to_index, index_to_action, get_valid_actions
+from env.actions import action_to_index, index_to_action
 from env.state import observation_to_state
 
 
@@ -70,12 +74,12 @@ def index_to_state(index: int, num_disks: int, num_sticks: int = 3) -> tuple:
 
 class REINFORCEBaselineAgent(BaseAgent):
     """
-    REINFORCE + табличный MC-baseline:
+    REINFORCE + табличный baseline по истории траекторий:
         ∇J(θ) = E[Σ_t (G_t - V(s_t)) ∇ log π(a|s)]
 
     V(s) — таблица размером num_sticks^num_disks.
-    Обновляется каждый эпизод: K MC-роллаутов → инкрементальное среднее.
-    Требует self.env — ссылку на среду, устанавливаемую через trainer.
+    Перед каждым градиентным шагом пересчитывается по последним
+    history_len эпизодам инкрементальным средним.
     """
 
     def __init__(self, observation_dim: int, action_space: list, config: dict):
@@ -90,10 +94,11 @@ class REINFORCEBaselineAgent(BaseAgent):
 
         self.num_disks = observation_dim // 2
         self.num_sticks = config.get("num_sticks", 3)
-        self.mc_episodes = config.get("mc_episodes", 5)
+        history_len = config.get("history_len", 20)
 
-        # Ссылка на среду для MC-роллаутов. Устанавливается из trainer.py.
-        self.env = None
+        # Кольцевой буфер последних history_len траекторий.
+        # Каждая траектория — list[(state_tuple, G_t)].
+        self.trajectory_history: deque = deque(maxlen=history_len)
 
         self.saved_valid_actions: list = []
         self._last_valid_actions: list = []
@@ -161,56 +166,28 @@ class REINFORCEBaselineAgent(BaseAgent):
         return values
 
     # ------------------------------------------------------------------
-    # Monte Carlo estimation of V(s)
+    # Value estimation from trajectory history
     # ------------------------------------------------------------------
 
-    def _run_mc_rollout(self) -> list:
+    def _estimate_value_table(self) -> np.ndarray:
         """
-        Один роллаут текущей политики без обновления весов.
-        Возвращает список (state_tuple, G_t) — пары (состояние, дисконтированный доход).
-        """
-        obs, info = self.env.reset(random_init=True)
-        trajectory = []  # [(state_tuple, reward), ...]
+        Оценка V(s) по истории последних history_len траекторий.
 
-        while True:
-            state_tuple = tuple(tuple(d) for d in info["state"])
-            valid_actions = get_valid_actions(state_tuple, self.env.num_sticks)
-            action, _ = self.select_action(obs, valid_actions, training=True)
-            obs, reward, terminated, truncated, info = self.env.step(action)
-            trajectory.append((state_tuple, reward))
-            if terminated or truncated:
-                break
-
-        # Дисконтированные доходы G_t = r_t + γ r_{t+1} + ...
-        T = len(trajectory)
-        returns = [0.0] * T
-        G = 0.0
-        for t in reversed(range(T)):
-            G = trajectory[t][1] + self.gamma * G
-            returns[t] = G
-
-        return [(trajectory[t][0], returns[t]) for t in range(T)]
-
-    def _update_value_table(self) -> np.ndarray:
-        """
-        MC-оценка V(s): mc_episodes роллаутов → every-visit инкрементальное среднее.
-
-        V(s) = 0 в начале каждой итерации (сбрасывается, не накапливается).
-        Возвращает таблицу V размером num_sticks^num_disks.
+        V(s) = 0, c(s) = 0 в начале каждого вызова.
+        for trajectory in trajectory_history:
+            for (s, G) in trajectory:
+                V(s) += (G - V(s)) / (c(s) + 1)
+                c(s) += 1
         """
         num_states = self.num_sticks ** self.num_disks
         V = np.zeros(num_states, dtype=np.float64)
-        n = np.zeros(num_states, dtype=np.int64)
+        c = np.zeros(num_states, dtype=np.int64)
 
-        if self.env is None:
-            return V
-
-        for _ in range(self.mc_episodes):
-            rollout = self._run_mc_rollout()
-            for state_tuple, G_t in rollout:
+        for trajectory in self.trajectory_history:
+            for state_tuple, G in trajectory:
                 idx = state_to_index(state_tuple, self.num_sticks)
-                n[idx] += 1
-                V[idx] += (G_t - V[idx]) / n[idx]
+                V[idx] += (G - V[idx]) / (c[idx] + 1)
+                c[idx] += 1
 
         return V
 
@@ -225,16 +202,23 @@ class REINFORCEBaselineAgent(BaseAgent):
         device = next(self.policy_network.parameters()).device
         returns = self._compute_returns()
 
-        # 1. MC-оценка V(s) до обновления политики (V сбрасывается каждую итерацию)
-        V = self._update_value_table()
+        # 1. Добавляем текущий эпизод в историю
+        episode_traj = [
+            (observation_to_state(self.saved_states[t]), float(returns[t]))
+            for t in range(len(self.saved_states))
+        ]
+        self.trajectory_history.append(episode_traj)
 
-        # 2. Advantages = G_t - V(s_t)
+        # 2. Оцениваем V(s) по истории последних N эпизодов
+        V = self._estimate_value_table()
+
+        # 3. Advantages = G_t - V(s_t)
         baseline_values = self._predict_baseline(self.saved_states, V)
         advantages = returns - baseline_values
         advantages_t = torch.tensor(advantages, dtype=torch.float32, device=device)
         baseline_mse = float(np.mean((baseline_values - returns) ** 2))
 
-        # 3. Policy gradient: L(θ) = -(1/T) Σ_t A_t * log π(a_t | s_t)
+        # 4. Policy gradient: L(θ) = -(1/T) Σ_t A_t * log π(a_t | s_t)
         policy_loss = torch.tensor(0.0, device=device)
         n = len(self.saved_states)
         for t in range(n):
