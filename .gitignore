@@ -29,6 +29,9 @@ Thumbs.db
 *.pth
 *.pt
 eval_params.json
+logs/
+*.log
+*.gif
 
 
 # Tests

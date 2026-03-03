@@ -27,6 +27,10 @@ def parse_args() -> object:
                         help="Disable random initialization")
     parser.add_argument("--checkpoint_interval", type=int, default=settings.CHECKPOINT_INTERVAL,
                         help="Episodes between checkpoints")
+    parser.add_argument("--load_model", type=str, default=None,
+                        help="Path to model to load for continued training (e.g. model.pth or model_checkpoint_5000.pth)")
+    parser.add_argument("--save_model", type=str, default="model.pth",
+                        help="Path to save the trained model (default: model.pth)")
     return parser.parse_args()
 
 
@@ -67,6 +71,11 @@ def main():
     }
 
     agent = create_agent(settings.AGENT_METHOD, obs_dim, action_space, agent_config)
+
+    # Загрузка весов для дообучения
+    if args.load_model:
+        agent.load(args.load_model)
+        log_message(f"Loaded model from {args.load_model} for continued training")
     
     # 4. Запуск обучения
     try:
@@ -83,9 +92,8 @@ def main():
         
         # 5. Сохранение результатов
         # Сохраняем веса нейросети
-        model_path = "model.pth"
-        agent.save(model_path)
-        log_message(f"Model weights saved to {model_path}")
+        agent.save(args.save_model)
+        log_message(f"Model weights saved to {args.save_model}")
         
         # Сохраняем историю для графиков
         history_path = "logs/training_history.json"
