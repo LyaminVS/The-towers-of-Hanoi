@@ -13,6 +13,9 @@ mkdir -p logs
 NUM_DISKS=4
 NUM_STICKS=3
 
+# --- Метод агента ---
+AGENT_METHOD="reinforce"
+
 # --- Награды ---
 REWARD_STEP_PHASE1=-1.0
 REWARD_GOAL_PHASE1=4000.0
@@ -51,11 +54,15 @@ HISTORY_PHASE2="logs/training_history_phase2.json"
 
 # ========== ФАЗА 1 ==========
 echo "=== Фаза 1: Базовое обучение ==="
+echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD"
 echo "  REWARD_STEP=$REWARD_STEP_PHASE1, RANDOM_INIT=True, entropy_adaptive=False"
 echo "  Эпизодов: $NUM_EPISODES_PHASE1"
 echo ""
 
 python run/train.py \
+    --num_disks "$NUM_DISKS" \
+    --num_sticks "$NUM_STICKS" \
+    --agent_method "$AGENT_METHOD" \
     --reward_step "$REWARD_STEP_PHASE1" \
     --reward_goal "$REWARD_GOAL_PHASE1" \
     --reward_invalid_move "$REWARD_INVALID_MOVE_PHASE1" \
@@ -73,12 +80,16 @@ python run/train.py \
 # ========== ФАЗА 2 ==========
 echo ""
 echo "=== Фаза 2: Дообучение ==="
+echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD"
 echo "  REWARD_STEP=$REWARD_STEP_PHASE2, RANDOM_INIT=False, entropy_adaptive=True"
 echo "  Эпизодов: $NUM_EPISODES_PHASE2"
 echo "  Загрузка: $MODEL_PHASE1"
 echo ""
 
 python run/train.py \
+    --num_disks "$NUM_DISKS" \
+    --num_sticks "$NUM_STICKS" \
+    --agent_method "$AGENT_METHOD" \
     --load_model "$MODEL_PHASE1" \
     --reward_step "$REWARD_STEP_PHASE2" \
     --reward_goal "$REWARD_GOAL_PHASE2" \

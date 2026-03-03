@@ -17,6 +17,13 @@ from utils.params import save_history
 
 def parse_args() -> object:
     parser = argparse.ArgumentParser(description="Train Tower of Hanoi agent")
+    parser.add_argument("--num_disks", type=int, default=None,
+                        help="Override NUM_DISKS from config")
+    parser.add_argument("--num_sticks", type=int, default=None,
+                        help="Override NUM_STICKS from config")
+    parser.add_argument("--agent_method", type=str, default=None,
+                        choices=["reinforce", "reinforce_baseline", "trpo"],
+                        help="Override AGENT_METHOD from config")
     parser.add_argument("--num_episodes", type=int, default=settings.NUM_EPISODES,
                         help="Number of episodes to run")
     parser.add_argument("--max_steps", type=int, default=settings.MAX_STEPS_PER_EPISODE,
@@ -62,6 +69,12 @@ def main():
     args = parse_args()
 
     # Переопределение параметров из CLI
+    if args.num_disks is not None:
+        settings.NUM_DISKS = args.num_disks
+    if args.num_sticks is not None:
+        settings.NUM_STICKS = args.num_sticks
+    if args.agent_method is not None:
+        settings.AGENT_METHOD = args.agent_method
     if args.reward_step is not None:
         settings.REWARD_STEP = args.reward_step
     if args.reward_goal is not None:
