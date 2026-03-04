@@ -24,9 +24,11 @@ We model the Tower of Hanoi puzzle as a **Markov Decision Process (MDP)**.
 We will play with 3 pegs. The last peg is the third one.
 Let $n$ be the number of disks.  
 A state is represented by the vector:
+
 $$
 s = (p_1, h_1, \dots, p_n, h_n),
 $$
+
 where $p_i$ is the peg index holding disk $i$. Disk indices correspond to sizes: disk $1$ is the smallest, disk $n$ is the largest. $h_i$ is the height of the disk $i$ on its peg $p_i$. $h_i=0$ means that disk $i$ lies on the bottom of the peg $p_i$
 
 ### Action Space
