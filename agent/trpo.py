@@ -303,7 +303,7 @@ class TRPOAgent(REINFORCEBaselineAgent):
         # Суррогат максимизируем: шаг должен быть в направлении роста (step_dir^T g > 0)
         g_dot_step = float(torch.dot(flat_g, step_dir).item())
         if g_dot_step < 0:
-            step_dir = -step_dir
+            step_dir = torch.zeros_like(step_dir)
         if not torch.isfinite(step_dir).all():
             self._set_flat_params(self.policy_network, old_params)
             self.reset_trajectory()
