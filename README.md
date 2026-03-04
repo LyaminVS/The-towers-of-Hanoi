@@ -196,7 +196,7 @@ REINFORCE with baseline reduces the variance of the policy gradient estimator wi
 For any state-dependent function $b(s_t)$ the following identity holds:
 
 $$
-\mathbb{E}_{\pi_\theta}\!\left[\nabla_\theta \log \pi_\theta(A_t\mid S_t)\, b(S_t)\right] = 0,
+\mathbb{E}_{\pi_\theta}\left[\nabla_\theta \log \pi_\theta(A_t\mid S_t)\, b(S_t)\right] = 0,
 $$
 
 so subtracting $b(S_t)$ from the return leaves the gradient expectation unchanged while reducing its variance (hopefully).
@@ -250,9 +250,10 @@ The baseline $\hat{V}$ is a table of size $P^n$, recomputed from scratch before 
 $$
 V[\text{idx}(s_t)]
 \;\mathrel{+}=\;
-\frac{G_t - V[\text{idx}(s_t)]}{c[\text{idx}(s_t)] + 1},
-\newline
+\frac{G_t - V[\text{idx}(s_t)]}{c[\text{idx}(s_t)] + 1} \newline
+$$
 
+$$
 c[\text{idx}(s_t)]
 \;\mathrel{+}=\; 1.
 $$
