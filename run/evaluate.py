@@ -137,7 +137,6 @@ def main() -> None:
         "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
-        "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
         "num_sticks": settings.NUM_STICKS,
     }

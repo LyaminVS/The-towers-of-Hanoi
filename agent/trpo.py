@@ -229,9 +229,15 @@ class TRPOAgent(REINFORCEBaselineAgent):
         adv = self._get_advantages_tensor(returns, V)
         if self.max_abs_advantage > 0:
             adv = torch.clamp(adv, -self.max_abs_advantage, self.max_abs_advantage)
-        std = adv.std().item() if adv.numel() > 1 else 0.0
-        if np.isfinite(std) and std > 1e-8:
-            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+        # Нормализация только по прошлому (0..t-1), без мат. ожидания от будущего — без bias
+        adv_np = adv.detach().cpu().numpy().astype(np.float64)
+        for t in range(1, len(adv_np)):
+            past = adv_np[:t]
+            mean_past = float(np.mean(past))
+            std_past = float(np.std(past))
+            if np.isfinite(std_past) and std_past > 1e-8:
+                adv_np[t] = (adv_np[t] - mean_past) / (std_past + 1e-8)
+        adv = torch.as_tensor(adv_np, dtype=adv.dtype, device=adv.device)
 
         states, actions_idx, old_logp, valid_masks = self._build_batch_tensors()
         old_params = self._flat_params(self.policy_network)

@@ -73,8 +73,6 @@ def parse_args() -> object:
     # Learning rates (REINFORCE / baseline)
     parser.add_argument("--learning_rate", type=float, default=None,
                         help="Policy learning rate (REINFORCE_LR / REINFORCE_BASELINE_LR)")
-    parser.add_argument("--value_lr", type=float, default=None,
-                        help="Baseline value learning rate (REINFORCE_BASELINE_VALUE_LR, for baseline only)")
     # TRPO
     parser.add_argument("--trpo_max_kl", type=float, default=None, help="TRPO trust region max KL")
     parser.add_argument("--trpo_cg_iters", type=int, default=None, help="TRPO conjugate gradient iterations")
@@ -127,8 +125,6 @@ def main():
         settings.REINFORCE_LR = args.learning_rate
         if hasattr(settings, "REINFORCE_BASELINE_LR"):
             settings.REINFORCE_BASELINE_LR = args.learning_rate
-    if args.value_lr is not None:
-        settings.REINFORCE_BASELINE_VALUE_LR = args.value_lr
     if args.trpo_max_kl is not None:
         settings.TRPO_MAX_KL = args.trpo_max_kl
     if args.trpo_cg_iters is not None:
@@ -189,7 +185,6 @@ def main():
             getattr(settings, "TRPO_ENTROPY_COEF", 0.01) if settings.AGENT_METHOD == "trpo"
             else (getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1))
         ),
-        "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
         "num_sticks": settings.NUM_STICKS,
         "mc_episodes": getattr(settings, "BASELINE_MC_EPISODES", 5),

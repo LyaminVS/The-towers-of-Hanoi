@@ -19,7 +19,7 @@ REWARD_CORRECT_PLACEMENT = 2
 USE_CORRECT_PLACEMENT = False
 
 # --- Параметры обучения ---
-GAMMA = 0.99  # коэффициент дисконтирования для discounted returns (Σ γ^k * r_k)
+GAMMA = 0.9  # коэффициент дисконтирования для discounted returns (Σ γ^k * r_k)
 DISCOUNT_FACTOR = 0.99  # алиас для GAMMA (для совместимости)
 NUM_EPISODES = 20000  # количество эпизодов обучения
 MAX_STEPS_PER_EPISODE = 200  # лимит шагов (2^n - 1 для n дисков)
@@ -39,7 +39,6 @@ REINFORCE_MAX_GRAD_NORM = 5.0
 
 # --- REINFORCE + baseline ---
 REINFORCE_BASELINE_LR = 1e-2
-REINFORCE_BASELINE_VALUE_LR = 1e-2
 REINFORCE_BASELINE_HIDDEN_DIMS = [128, 128]
 
 # --- Батч (TRPO / policy gradient) ---

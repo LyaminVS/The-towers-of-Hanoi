@@ -89,7 +89,6 @@ def main():
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF", 0.01),
-        "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
     }
 
