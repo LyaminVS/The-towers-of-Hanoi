@@ -249,13 +249,13 @@ class TRPOAgent(REINFORCEBaselineAgent):
         if not np.isfinite(mean_entropy):
             mean_entropy = 0.0
 
-        # 3. g = ∇(surrogate + entropy_coef * entropy) — как в REINFORCE
+        # 3. g = ∇((1-alpha)*surrogate + alpha*entropy)
         self.policy_network.zero_grad(set_to_none=True)
         surr_for_grad, _ = self._surrogate_and_kl(states, actions_idx, old_logp, adv, valid_masks)
         kl_for_fvp = self._kl_full(states, valid_masks, old_probs)
         entropy_for_grad = self._mean_entropy(states, valid_masks)
-        entropy_coef = getattr(self, "entropy_coef", 0.01)
-        surr_total = surr_for_grad + entropy_coef * entropy_for_grad
+        alpha = getattr(self, "entropy_coef", 0.01)
+        surr_total = (1.0 - alpha) * surr_for_grad + alpha * entropy_for_grad
         grads = torch.autograd.grad(surr_total, list(self.policy_network.parameters()), retain_graph=True)
         flat_g = torch.cat([g.reshape(-1) for g in grads]).detach()
 

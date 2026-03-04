@@ -165,7 +165,9 @@ class REINFORCEAgent(BaseAgent):
         returns_t = torch.tensor(returns, dtype=torch.float32, device=device)
 
         policy_loss, mean_entropy = self._compute_policy_loss_and_entropy(returns_t)
-        total_loss = policy_loss - self.entropy_coef * mean_entropy
+        alpha = self.entropy_coef
+        entropy_loss = -mean_entropy  # минимизируем -H ⇒ максимизируем H
+        total_loss = (1.0 - alpha) * policy_loss + alpha * entropy_loss
 
         self.policy_optimizer.zero_grad()
         total_loss.backward()

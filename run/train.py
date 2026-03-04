@@ -70,6 +70,20 @@ def parse_args() -> object:
                         help="Clip gradient norm for REINFORCE/baseline (default: from settings, None=no clip)")
     parser.add_argument("--episodes_per_update", type=int, default=None,
                         help="Episodes per one policy update (batch mode; default: 1, for TRPO try 5–10)")
+    # Learning rates (REINFORCE / baseline)
+    parser.add_argument("--learning_rate", type=float, default=None,
+                        help="Policy learning rate (REINFORCE_LR / REINFORCE_BASELINE_LR)")
+    parser.add_argument("--value_lr", type=float, default=None,
+                        help="Baseline value learning rate (REINFORCE_BASELINE_VALUE_LR, for baseline only)")
+    # TRPO
+    parser.add_argument("--trpo_max_kl", type=float, default=None, help="TRPO trust region max KL")
+    parser.add_argument("--trpo_cg_iters", type=int, default=None, help="TRPO conjugate gradient iterations")
+    parser.add_argument("--trpo_backtrack_iters", type=int, default=None, help="TRPO line search backtrack iterations")
+    parser.add_argument("--trpo_backtrack_coef", type=float, default=None, help="TRPO backtrack step multiplier")
+    parser.add_argument("--trpo_max_abs_advantage", type=float, default=None, help="TRPO clip |A| (0 = no clip)")
+    parser.add_argument("--trpo_max_grad_norm_cg", type=float, default=None, help="TRPO grad norm cap before CG")
+    parser.add_argument("--trpo_entropy_coef", type=float, default=None, help="TRPO entropy coefficient")
+    parser.add_argument("--trpo_damping", type=float, default=None, help="TRPO (H + damping*I) damping")
     return parser.parse_args()
 
 
@@ -107,6 +121,30 @@ def main():
         settings.REINFORCE_MAX_GRAD_NORM = (
             None if args.max_grad_norm <= 0 else args.max_grad_norm
         )
+    if args.episodes_per_update is not None:
+        settings.EPISODES_PER_UPDATE = args.episodes_per_update
+    if args.learning_rate is not None:
+        settings.REINFORCE_LR = args.learning_rate
+        if hasattr(settings, "REINFORCE_BASELINE_LR"):
+            settings.REINFORCE_BASELINE_LR = args.learning_rate
+    if args.value_lr is not None:
+        settings.REINFORCE_BASELINE_VALUE_LR = args.value_lr
+    if args.trpo_max_kl is not None:
+        settings.TRPO_MAX_KL = args.trpo_max_kl
+    if args.trpo_cg_iters is not None:
+        settings.TRPO_CG_ITERS = args.trpo_cg_iters
+    if args.trpo_backtrack_iters is not None:
+        settings.TRPO_BACKTRACK_ITERS = args.trpo_backtrack_iters
+    if args.trpo_backtrack_coef is not None:
+        settings.TRPO_BACKTRACK_COEF = args.trpo_backtrack_coef
+    if args.trpo_max_abs_advantage is not None:
+        settings.TRPO_MAX_ABS_ADVANTAGE = args.trpo_max_abs_advantage
+    if args.trpo_max_grad_norm_cg is not None:
+        settings.TRPO_MAX_GRAD_NORM_CG = args.trpo_max_grad_norm_cg
+    if args.trpo_entropy_coef is not None:
+        settings.TRPO_ENTROPY_COEF = args.trpo_entropy_coef
+    if args.trpo_damping is not None:
+        settings.TRPO_DAMPING = args.trpo_damping
     if args.no_entropy_adaptive:
         settings.REINFORCE_ENTROPY_ADAPTIVE = False
 

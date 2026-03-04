@@ -139,11 +139,14 @@ class REINFORCEBaselineAgent(REINFORCEAgent):
         advantages_t = torch.tensor(advantages, dtype=torch.float32, device=device)
         baseline_mse = float(np.mean((baseline_values - returns_np) ** 2))
 
-        # 4. Policy gradient с advantages (как в REINFORCE, но с весами A_t вместо G_t)
+        # 4. Policy gradient с advantages: (1-alpha)*policy_loss + alpha*entropy_loss
         policy_loss, mean_entropy = self._compute_policy_loss_and_entropy(advantages_t)
+        alpha = self.entropy_coef
+        entropy_loss = -mean_entropy
+        total_loss = (1.0 - alpha) * policy_loss + alpha * entropy_loss
 
         self.policy_optimizer.zero_grad()
-        policy_loss.backward()
+        total_loss.backward()
         if getattr(self, "max_grad_norm", None) is not None:
             torch.nn.utils.clip_grad_norm_(
                 self.policy_network.parameters(),
