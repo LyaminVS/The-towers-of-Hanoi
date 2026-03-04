@@ -265,13 +265,13 @@ The only structural difference is the subtraction of $\hat{V}(s_t)$ from each re
 
 The goal of policy optimization is to find parameters $\theta$ that maximize the expected discounted return:
 
-$$V(\pi) = \mathbb{E}_{s_0, a_0, \ldots} \left[\sum_{t=0}^{\infty} \gamma^t r(s_t)\right]$$
+$$V(\pi) = \mathbb{E}_{S_0, A_0, \ldots} \left[\sum_{t=0}^{\infty} \gamma^t R_t\right]$$
 
 A key identity relates the performance of a new policy $\tilde{\pi}$ to the current policy $\pi$ through the advantage function:
 
 $$V(\tilde{\pi}) = V(\pi) + \sum_s \rho_{\tilde{\pi}}(s) \sum_a \tilde{\pi}(a|s)\, A_\pi(s, a)$$
 
-where $\rho_{\tilde{\pi}}(s) = \sum_{t=0}^{\infty} \gamma^t P(S_t = s \mid \tilde{\pi})$ is the discounted state visitation frequency under the new policy, and $\mathcal{A}_\pi(S,A) = Q_\pi(S,A) - V_\pi(S)$ is the advantage of the current policy.
+where $\rho_{\tilde{\pi}}(s) = \sum_{t=0}^{\infty} \gamma^t P(S_t = s \mid \tilde{\pi})$ is the discounted state visitation frequency under the new policy, and $A_\pi(S,A) = Q_\pi(S,A) - V_\pi(S)$ is the advantage of the current policy.
 
 This identity implies that if the new policy $\tilde{\pi}$ has non-negative expected advantage at every state, then $V(\tilde{\pi}) \geq V(\pi)$. However, direct optimization of this expression is difficult because $\rho_{\tilde{\pi}}$ depends on $\tilde{\pi}$.
 
@@ -288,16 +288,6 @@ Replacing $\rho_{\tilde{\pi}}$ with $\rho_\pi$ is the key approximation in TRPO.
 $$L_{\pi_{\theta_0}}(\pi_{\theta_0}) = V(\pi_{\theta_0}), \qquad \nabla_\theta L_{\pi_{\theta_0}}(\pi_\theta)\big|_{\theta = \theta_0} = \nabla_\theta V(\pi_\theta)\big|_{\theta = \theta_0}$$
 
 That is, at the current parameter values the function values and gradients coincide. This means that a **sufficiently small** step improving $L_\pi$ is guaranteed to improve $V$ as well.
-
-The problem is that for large steps the approximation $\rho_{\tilde{\pi}} \approx \rho_\pi$ breaks down: the new policy begins visiting different states, and the surrogate ceases to be a reliable proxy for the true performance. A mechanism to control the step size is needed.
-
-Kakade and Langford (2002) showed that for mixture policies an explicit lower bound on the improvement of $V$ can be derived. Schulman et al. generalized this result to arbitrary stochastic policies:
-
-$$V(\tilde{\pi}) \geq L_\pi(\tilde{\pi}) - \frac{4\gamma\epsilon}{(1 - \gamma)^2} \alpha^2$$
-
-where $\epsilon = \max_{s,a} |A_\pi(s,a)|$, and $\alpha = \max_s D_{TV}(\pi(\cdot|s) \| \tilde{\pi}(\cdot|s))$ is the maximum total variation divergence between the policies. Using the relation $D_{TV}^2 \leq D_{KL}$, we obtain:
-
-$$V(\tilde{\pi}) \geq L_\pi(\tilde{\pi}) - C \cdot D_{KL}^{\max}(\pi, \tilde{\pi}), \qquad C = \frac{4\gamma}{(1 - \gamma)^2}$$
 
 In summary: the approximation $\rho_{\tilde{\pi}} \approx \rho_\pi$ is justified when the KL divergence between the old and new policies is small. The closer the new policy is to the old one (in the KL sense), the more accurately the surrogate $L_\pi$ reflects the actual change in $V$.
 
@@ -338,8 +328,6 @@ Computing $F^{-1}g$ directly for networks with thousands of parameters is infeas
 
    $$L(\theta) = \frac{1}{T}\sum_{t=1}^{T} \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_\text{old}}(a_t|s_t)} A_t$$
 
-   In the code, the log-ratio is clamped to $[-10, 10]$ for numerical stability. The gradient is computed with an entropy bonus: $\nabla_\theta \left[(1-\alpha) L + \alpha H\right]$, where $\alpha$ is the entropy coefficient (0.01 by default). This prevents premature collapse of the policy into a deterministic one.
-
    If the gradient norm exceeds `max_grad_norm_cg` (default 50.0), the gradient is scaled down before being passed to CG.
 
 5. **Conjugate Gradient (CG).** We solve $(F + \lambda I) x = g$, where $\lambda$ is the damping coefficient (default 0.01) added to regularize the Fisher matrix. The Fisher-vector product is computed via double automatic differentiation:
@@ -353,17 +341,6 @@ Computing $F^{-1}g$ directly for networks with thousands of parameters is infeas
    - Verify that $x^T F x > 0$ (the direction is valid).
    - Maximum multiplier: $\beta = \sqrt{2\delta / (x^T F x)}$.
    - Full step: $\Delta\theta = \beta \cdot x$.
-
-   If $x^T g < 0$ (the CG direction does not align with the direction of surrogate increase), the sign of $x$ is flipped.
-
-7. **Line search with KL constraint check.** The full step may violate the nonlinear KL constraint or degrade the surrogate, so a backtracking line search is performed:
-   - Try $\alpha_i = 1, 0.5, 0.25, \ldots$ (up to `backtrack_iters = 10` steps).
-   - At each step, two conditions are checked: (a) the surrogate improves, $L(\theta_\text{new}) > L(\theta_\text{old})$, and (b) the full KL divergence satisfies $D_{KL}(\pi_\text{new} \| \pi_\text{old}) \leq \delta$.
-   - The first step satisfying both conditions is accepted.
-   - If no step improved the surrogate but one satisfies the KL constraint, it is accepted as a fallback.
-   - If nothing qualifies, the parameters are reverted to $\theta_\text{old}$.
-
-   The KL is computed as the **full** KL divergence over the distributions across all actions (not sample-based), with smoothing $\epsilon = 10^{-8}$ to prevent $\log(0)$ when the policy is near-deterministic.
 ```
 
 # Running the Project 
