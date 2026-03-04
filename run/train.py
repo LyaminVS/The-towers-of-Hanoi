@@ -10,7 +10,7 @@ from config import settings
 from env.environment import create_env
 from env.rewards import Reward
 from env.actions import get_action_space
-from agent import create_agent
+from agent import create_agent, create_baseline
 from training.trainer import train
 from training.logger import setup_logger, log_message
 from utils.params import save_history
@@ -24,8 +24,11 @@ def parse_args() -> object:
     parser.add_argument("--num_sticks", type=int, default=None,
                         help="Override NUM_STICKS from config")
     parser.add_argument("--agent_method", type=str, default=None,
-                        choices=["reinforce", "reinforce_baseline", "trpo"],
+                        choices=["reinforce", "trpo"],
                         help="Override AGENT_METHOD from config")
+    parser.add_argument("--value_estimator", type=str, default=None,
+                        choices=["zero", "tabular"],
+                        help="Override VALUE_ESTIMATOR from config (zero=no baseline, tabular=V(s) from history)")
     parser.add_argument("--num_episodes", type=int, default=settings.NUM_EPISODES,
                         help="Number of episodes to run")
     parser.add_argument("--max_steps", type=int, default=settings.MAX_STEPS_PER_EPISODE,
@@ -93,6 +96,8 @@ def main():
         settings.NUM_STICKS = args.num_sticks
     if args.agent_method is not None:
         settings.AGENT_METHOD = args.agent_method
+    if args.value_estimator is not None:
+        settings.VALUE_ESTIMATOR = args.value_estimator
     if args.reward_step is not None:
         settings.REWARD_STEP = args.reward_step
     if args.reward_goal is not None:
@@ -153,13 +158,14 @@ def main():
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1),
-        "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
+        "num_disks": settings.NUM_DISKS,
         "num_sticks": settings.NUM_STICKS,
-        "mc_episodes": getattr(settings, "BASELINE_MC_EPISODES", 5),
+        "history_len": getattr(settings, "HISTORY_LEN", 20),
     }
 
-    agent = create_agent(settings.AGENT_METHOD, obs_dim, action_space, agent_config)
+    baseline = create_baseline(settings.VALUE_ESTIMATOR, agent_config)
+    agent = create_agent(settings.AGENT_METHOD, obs_dim, action_space, agent_config, baseline)
 
     # Загрузка весов для дообучения
     if args.load_model:

@@ -22,7 +22,7 @@ from env.environment import create_env
 from env.rewards import Reward
 from env.actions import get_action_space, get_valid_actions
 from env.render import PygameRenderer
-from agent import create_agent
+from agent import create_agent, create_baseline
 
 
 def parse_args():
@@ -30,7 +30,10 @@ def parse_args():
     parser.add_argument("--output", "-o", type=str, default="game.gif")
     parser.add_argument("--load_model", type=str, default=settings.EVAL_MODEL_PATH)
     parser.add_argument("--num_disks", type=int, default=settings.NUM_DISKS)
-    parser.add_argument("--agent_method", type=str, default=settings.AGENT_METHOD)
+    parser.add_argument("--agent_method", type=str, default=settings.AGENT_METHOD,
+                        choices=["reinforce", "trpo"])
+    parser.add_argument("--value_estimator", type=str, default=settings.VALUE_ESTIMATOR,
+                        choices=["zero", "tabular"])
     parser.add_argument("--duration", type=int, default=400)
     parser.add_argument("--loop", type=int, default=0)
     parser.add_argument("--headless", action="store_true")
@@ -89,11 +92,14 @@ def main():
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF", 0.01),
-        "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
+        "num_disks": args.num_disks,
+        "num_sticks": settings.NUM_STICKS,
+        "history_len": getattr(settings, "HISTORY_LEN", 20),
     }
 
-    agent = create_agent(args.agent_method, obs_dim, action_space, agent_config)
+    baseline = create_baseline(args.value_estimator, agent_config)
+    agent = create_agent(args.agent_method, obs_dim, action_space, agent_config, baseline)
     agent.load(args.load_model)
 
     pygame.init()

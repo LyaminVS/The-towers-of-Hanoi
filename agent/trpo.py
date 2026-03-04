@@ -15,7 +15,6 @@ Value: табличная оценка V(s) по истории последни
 
 from __future__ import annotations
 
-from collections import deque
 from typing import Dict, Tuple, Callable
 
 import numpy as np
@@ -25,7 +24,6 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 from .base_agent import BaseAgent
 from .policy import PolicyNetwork
-from .reinforce_baseline import state_to_index
 from env.actions import index_to_action
 from env.state import observation_to_state
 
@@ -47,8 +45,6 @@ class TRPOAgent(BaseAgent):
     Config keys (defaults):
       - discount_factor: 0.99
       - hidden_dims: [64, 64]
-      - num_sticks: 3
-      - history_len: 20          (глубина истории траекторий для оценки V)
       - max_kl: 0.01
       - cg_iters: 10
       - cg_tol: 1e-10
@@ -59,7 +55,7 @@ class TRPOAgent(BaseAgent):
       - max_grad_norm: 10.0      (клиппинг нормы градиента перед CG)
     """
 
-    def __init__(self, observation_dim: int, action_space: list, config: dict):
+    def __init__(self, observation_dim: int, action_space: list, config: dict, baseline):
         super().__init__(observation_dim, action_space, config)
 
         if scipy_cg is None:
@@ -69,19 +65,13 @@ class TRPOAgent(BaseAgent):
             ) from _SCIPY_IMPORT_ERROR
 
         self.action_space = action_space
+        self.baseline = baseline
         action_dim = len(action_space)
 
         hidden_dims = config.get("hidden_dims", [64, 64])
         self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
 
         self.gamma = float(config.get("discount_factor", 0.99))
-        self.num_disks = observation_dim // 2
-        self.num_sticks = int(config.get("num_sticks", 3))
-        history_len = int(config.get("history_len", 20))
-
-        # Кольцевой буфер последних history_len траекторий.
-        # Каждая траектория — list[(state_tuple, G_t)].
-        self.trajectory_history: deque = deque(maxlen=history_len)
 
         self.max_kl = float(config.get("max_kl", config.get("TRPO_MAX_KL", 0.01)))
         self.cg_iters = int(config.get("cg_iters", config.get("TRPO_CG_ITERS", 10)))
@@ -156,50 +146,22 @@ class TRPOAgent(BaseAgent):
 
         return torch.as_tensor(returns, dtype=torch.float32, device=device)
 
-    # ---------------- value estimation from trajectory history ----------------
-
-    def _estimate_value_table(self) -> np.ndarray:
-        """
-        Оценка V(s) по истории последних history_len траекторий.
-
-        V(s) = 0, c(s) = 0 в начале каждого вызова.
-        for trajectory in trajectory_history:
-            for (s, G) in trajectory:
-                V(s) += (G - V(s)) / (c(s) + 1)
-                c(s) += 1
-        """
-        num_states = self.num_sticks ** self.num_disks
-        V = np.zeros(num_states, dtype=np.float64)
-        c = np.zeros(num_states, dtype=np.int64)
-
-        for trajectory in self.trajectory_history:
-            for state_tuple, G in trajectory:
-                idx = state_to_index(state_tuple, self.num_sticks)
-                V[idx] += (G - V[idx]) / (c[idx] + 1)
-                c[idx] += 1
-
-        return V
-
     def _compute_advantages(
         self,
         states: torch.Tensor,
         returns: torch.Tensor,
-        V: np.ndarray,
     ) -> Tuple[torch.Tensor, float]:
         """
-        Advantages = G_t - V(s_t) с табличным бейзлайном.
+        Advantages = G_t - b(s_t) через self.baseline.predict().
         Возвращает (advantages_tensor, value_mse) для логирования.
         """
-        states_np = states.detach().cpu().numpy()
-        baseline = np.zeros(states_np.shape[0], dtype=np.float32)
-        for i in range(states_np.shape[0]):
-            state = observation_to_state(states_np[i])
-            baseline[i] = V[state_to_index(state, self.num_sticks)]
+        states_list = list(states.detach().cpu().numpy())
+        baseline_values = self.baseline.predict(states_list).astype(np.float32)
 
         returns_np = returns.detach().cpu().numpy()
-        value_mse = float(np.mean((baseline - returns_np) ** 2))
+        value_mse = float(np.mean((baseline_values - returns_np) ** 2))
 
-        baseline_t = torch.as_tensor(baseline, dtype=torch.float32, device=states.device)
+        baseline_t = torch.as_tensor(baseline_values, dtype=torch.float32, device=states.device)
         adv = returns - baseline_t
         if self.advantage_norm and adv.numel() > 1:
             adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
@@ -289,13 +251,11 @@ class TRPOAgent(BaseAgent):
             (observation_to_state(self.saved_states[t]), float(returns_np[t]))
             for t in range(len(self.saved_states))
         ]
-        self.trajectory_history.append(episode_traj)
+        #self.baseline.add_trajectory(episode_traj)
 
-        # 2. Оцениваем V(s) по истории последних N эпизодов
-        V = self._estimate_value_table()
-
-        # 3. Advantages = G_t - V(s_t)
-        adv, value_loss = self._compute_advantages(states, returns, V)
+        # 2. Advantages = G_t - b(s_t)
+        adv, value_loss = self._compute_advantages(states, returns)
+        self.baseline.add_trajectory(episode_traj)
 
         old_params = self._flat_params(self.policy_network)
 

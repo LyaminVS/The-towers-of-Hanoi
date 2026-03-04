@@ -15,7 +15,7 @@ from env.environment import create_env
 from env.rewards import Reward
 from env.actions import get_action_space, get_valid_actions
 from env.render import PygameRenderer
-from agent import create_agent
+from agent import create_agent, create_baseline
 
 
 def parse_args() -> object:
@@ -28,7 +28,10 @@ def parse_args() -> object:
     parser.add_argument("--load_model", type=str, default=settings.EVAL_MODEL_PATH)
     parser.add_argument("--num_disks", type=int, default=settings.NUM_DISKS)
     parser.add_argument("--agent_method", type=str, default=settings.AGENT_METHOD,
-                        choices=["reinforce", "reinforce_baseline", "trpo"])
+                        choices=["reinforce", "trpo"])
+    parser.add_argument("--value_estimator", type=str, default=settings.VALUE_ESTIMATOR,
+                        choices=["zero", "tabular"],
+                        help="Метод оценки V(s): zero=без baseline, tabular=по истории")
     parser.add_argument("--num_episodes", type=int, default=settings.EVAL_NUM_EPISODES)
     parser.add_argument("--render", action="store_true", default=settings.EVAL_RENDER,
                         help="Визуализировать ход агента (Pygame)")
@@ -155,11 +158,14 @@ def main() -> None:
         "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
-        "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
+        "num_disks": args.num_disks,
+        "num_sticks": settings.NUM_STICKS,
+        "history_len": getattr(settings, "HISTORY_LEN", 20),
     }
 
-    agent = create_agent(args.agent_method, obs_dim, action_space, agent_config)
+    baseline = create_baseline(args.value_estimator, agent_config)
+    agent = create_agent(args.agent_method, obs_dim, action_space, agent_config, baseline)
     agent.load(args.load_model)
 
     print(f"Evaluating: {args.load_model} | {args.num_episodes} episodes | render={args.render}")

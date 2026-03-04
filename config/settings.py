@@ -32,18 +32,19 @@ CHECKPOINT_INTERVAL = 1000  # сохранять чекпоинт каждые N
 RANDOM_INIT = True  # случайное начальное состояние в каждом эпизоде
 
 # --- Выбор метода агента ---
-# "reinforce" | "reinforce_baseline" | "trpo"
-AGENT_METHOD = "trpo"
+# "reinforce" | "trpo"
+AGENT_METHOD = "reinforce"
+
+# --- Выбор метода оценки V(s) (baseline) ---
+# "zero"    — V(s) = 0 (vanilla REINFORCE без baseline)
+# "tabular" — V(s) по истории последних HISTORY_LEN эпизодов
+VALUE_ESTIMATOR = "tabular"
+HISTORY_LEN = 20  # глубина истории для TabularBaseline
 
 # --- REINFORCE ---
 REINFORCE_LR = 1e-3
 REINFORCE_HIDDEN_DIMS = [128, 128]
-REINFORCE_ENTROPY_COEF = 0.01  # коэффициент энтропии для исследования  # размеры скрытых слоёв policy
-
-# --- REINFORCE + baseline ---
-REINFORCE_BASELINE_LR = 1e-3
-REINFORCE_BASELINE_VALUE_LR = 1e-2
-REINFORCE_BASELINE_HIDDEN_DIMS = [128, 128]
+REINFORCE_ENTROPY_COEF = 0.01  # коэффициент энтропии для исследования
 
 # --- TRPO ---
 TRPO_MAX_KL = 0.01  # лимит KL-дивергенции
