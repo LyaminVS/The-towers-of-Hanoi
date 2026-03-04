@@ -18,7 +18,7 @@ Before starting, ensure you have the following installed on your host machine:
 Clone the project to your local machine and navigate into the project directory:
 
 ```bash
-git clone https://github.com/LyaminVS/The-towers-of-Hanoi
+git clone git@github.com:LyaminVS/The-towers-of-Hanoi.git
 cd ./The-towers-of-Hanoi
 ```
 
