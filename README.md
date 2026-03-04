@@ -413,5 +413,5 @@ Overall, these experiments demonstrate that **trust-region based policy optimiza
 
 Watch LAUNCH.md 🐳🐳🐳
 
-# Communication with chat bot about TRPO theory amd implementation:
-https://chatgpt.com/c/69a6949b-9168-8397-ab93-3bca4e3e5bf0
+## Communication with chat bot about TRPO theory amd implementation:
+[https://chatgpt.com/c/69a6949b-9168-8397-ab93-3bca4e3e5bf0](https://chatgpt.com/share/69a8bf1c-f9e4-8000-a43c-2d165a54c1da)
