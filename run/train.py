@@ -50,6 +50,10 @@ def parse_args() -> object:
                         help="Override REWARD_INVALID_MOVE from config")
     parser.add_argument("--reward_correct_placement", type=float, default=None,
                         help="Override REWARD_CORRECT_PLACEMENT from config")
+    parser.add_argument("--use_correct_placement", action="store_true", default=None,
+                        help="Use per-disk correct placement bonus (default: from config)")
+    parser.add_argument("--no-use_correct_placement", action="store_false", dest="use_correct_placement",
+                        help="Disable correct placement bonus")
     parser.add_argument("--entropy_coef", type=float, default=None,
                         help="Override REINFORCE_ENTROPY_COEF (fixed, when not adaptive)")
     parser.add_argument("--entropy_coef_min", type=float, default=None,
@@ -64,6 +68,8 @@ def parse_args() -> object:
                         help="Path to save training history (default: logs/training_history.json)")
     parser.add_argument("--max_grad_norm", type=float, default=None,
                         help="Clip gradient norm for REINFORCE/baseline (default: from settings, None=no clip)")
+    parser.add_argument("--episodes_per_update", type=int, default=None,
+                        help="Episodes per one policy update (batch mode; default: 1, for TRPO try 5–10)")
     return parser.parse_args()
 
 
@@ -85,6 +91,8 @@ def main():
         settings.REWARD_INVALID_MOVE = args.reward_invalid_move
     if args.reward_correct_placement is not None:
         settings.REWARD_CORRECT_PLACEMENT = args.reward_correct_placement
+    if args.use_correct_placement is not None:
+        settings.USE_CORRECT_PLACEMENT = args.use_correct_placement
     if args.entropy_coef is not None:
         settings.REINFORCE_ENTROPY_COEF = args.entropy_coef
     if args.entropy_coef_min is not None:
@@ -139,7 +147,10 @@ def main():
         "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
-        "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1),
+        "entropy_coef": (
+            getattr(settings, "TRPO_ENTROPY_COEF", 0.01) if settings.AGENT_METHOD == "trpo"
+            else (getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1))
+        ),
         "value_lr": getattr(settings, "REINFORCE_BASELINE_VALUE_LR", 1e-2),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
         "num_sticks": settings.NUM_STICKS,
@@ -147,6 +158,10 @@ def main():
         "max_grad_norm": getattr(settings, "REINFORCE_MAX_GRAD_NORM", None),
         "max_abs_advantage": getattr(settings, "TRPO_MAX_ABS_ADVANTAGE", 10.0),
         "max_grad_norm_cg": getattr(settings, "TRPO_MAX_GRAD_NORM_CG", 50.0),
+        "backtrack_coef": getattr(settings, "TRPO_BACKTRACK_COEF", 0.5),
+        "backtrack_iters": getattr(settings, "TRPO_BACKTRACK_ITERS", 10),
+        "cg_iters": getattr(settings, "TRPO_CG_ITERS", 10),
+        "damping": getattr(settings, "TRPO_DAMPING", 1e-2),
     }
 
     agent = create_agent(settings.AGENT_METHOD, obs_dim, action_space, agent_config)
@@ -170,6 +185,7 @@ def main():
             entropy_coef_min=args.entropy_coef_min if args.entropy_coef_min is not None else getattr(settings, "REINFORCE_ENTROPY_COEF_MIN", 0.01),
             entropy_coef_max=args.entropy_coef_max if args.entropy_coef_max is not None else getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2),
             entropy_window=args.entropy_window if args.entropy_window is not None else getattr(settings, "REINFORCE_ENTROPY_WINDOW", 100),
+            episodes_per_update=args.episodes_per_update if args.episodes_per_update is not None else getattr(settings, "EPISODES_PER_UPDATE", 1),
         )
         
         # 5. Сохранение результатов

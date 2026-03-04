@@ -52,6 +52,38 @@ class REINFORCEAgent(BaseAgent):
         super().reset_trajectory()
         self.saved_valid_actions.clear()
 
+    def get_trajectory(self) -> dict:
+        """Вернуть текущую траекторию (для батча). Копии списков."""
+        return {
+            "states": list(self.saved_states),
+            "actions": list(self.saved_actions),
+            "rewards": list(self.saved_rewards),
+            "log_probs": list(self.saved_log_probs),
+            "valid_actions": list(self.saved_valid_actions),
+        }
+
+    def update_batch(self, trajectories: list) -> dict:
+        """Один update по нескольким траекториям. Returns считаются отдельно по каждому эпизоду."""
+        if not trajectories:
+            return {"policy_loss": 0.0, "mean_return": 0.0}
+        ends = []
+        self.saved_states = []
+        self.saved_actions = []
+        self.saved_rewards = []
+        self.saved_log_probs = []
+        self.saved_valid_actions = []
+        for t in trajectories:
+            self.saved_states.extend(t["states"])
+            self.saved_actions.extend(t["actions"])
+            self.saved_rewards.extend(t["rewards"])
+            self.saved_log_probs.extend(t["log_probs"])
+            self.saved_valid_actions.extend(t["valid_actions"])
+            ends.append(len(self.saved_states))
+        self.saved_episode_ends = ends
+        out = self.update()
+        self.saved_episode_ends = None
+        return out
+
     def select_action(self, state, valid_actions: list, training: bool = True):
         self._last_valid_actions = list(valid_actions)
         device = next(self.policy_network.parameters()).device
@@ -75,8 +107,22 @@ class REINFORCEAgent(BaseAgent):
         return action, log_prob
 
     def _compute_returns(self) -> list:
-        """Дисконтированные return'ы G_t до конца эпизода (список длины T)."""
+        """Дисконтированные return'ы G_t. При saved_episode_ends — отдельно по каждому эпизоду в батче."""
         rewards = self.saved_rewards
+        if getattr(self, "saved_episode_ends", None):
+            ends = self.saved_episode_ends
+            start = 0
+            returns = []
+            for end in ends:
+                seg = rewards[start:end]
+                seg_returns = []
+                G = 0.0
+                for t in reversed(range(len(seg))):
+                    G = seg[t] + self.gamma * G
+                    seg_returns.append(G)
+                returns.extend(reversed(seg_returns))
+                start = end
+            return returns
         T = len(rewards)
         returns = []
         G = 0.0

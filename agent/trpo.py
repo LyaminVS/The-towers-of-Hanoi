@@ -1,8 +1,7 @@
 """
 TRPO — Trust Region Policy Optimization.
-Наследуется от REINFORCEBaselineAgent: тот же табличный V(s) по истории траекторий,
-advantages A_t = G_t - V(s_t) без нормализации. Обновление политики: natural gradient
-(CG) + line search по KL.
+Наследуется от REINFORCEBaselineAgent: табличный V(s) по истории, advantages A_t = G_t - V(s_t).
+Обновление политики: natural gradient (CG) + line search по KL.
 """
 
 from __future__ import annotations
@@ -12,11 +11,14 @@ from typing import Dict, Tuple, Callable
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+from torch.distributions import Categorical
+from torch.distributions.kl import kl_divergence
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 from .reinforce import _valid_actions_mask
 from .reinforce_baseline import REINFORCEBaselineAgent
-from env.actions import action_to_index, index_to_action
+from env.actions import action_to_index
 from env.state import observation_to_state
 
 try:
@@ -32,18 +34,13 @@ else:
 
 class TRPOAgent(REINFORCEBaselineAgent):
     """
-    TRPO: суррогат L = E[ratio * A], ограничение KL(π_old || π_new) ≤ δ.
-    Value и advantages — как в REINFORCE baseline (табличный V(s), A_t = G_t - V(s_t)).
+    TRPO: суррогат L = E[ratio * A], ограничение KL(π_new || π_old) ≤ δ (как в Spinning Up / Schulman).
+    V(s) — табличный baseline из родителя (reinforce_baseline), A_t = G_t - V(s_t).
     Шаг: (F + λI)x = g через CG, затем line search по α.
     """
 
     def __init__(self, observation_dim: int, action_space: list, config: dict):
         super().__init__(observation_dim, action_space, config)
-
-        if scipy_cg is None:
-            raise ImportError(
-                "SciPy required for TRPO (scipy.sparse.linalg.cg). pip install scipy"
-            ) from _SCIPY_IMPORT_ERROR
 
         self.max_kl = float(config.get("max_kl", config.get("TRPO_MAX_KL", 0.01)))
         self.cg_iters = int(config.get("cg_iters", config.get("TRPO_CG_ITERS", 10)))
@@ -75,7 +72,7 @@ class TRPOAgent(REINFORCEBaselineAgent):
         return states, actions_idx, old_logp, valid_masks
 
     def _get_advantages_tensor(self, returns: list, V: np.ndarray) -> torch.Tensor:
-        """A_t = G_t - V(s_t), без нормализации."""
+        """A_t = G_t - V(s_t). V(s) из таблицы по истории (reinforce_baseline)."""
         baseline = self._predict_baseline(self.saved_states, V)
         returns_np = np.array(returns, dtype=np.float64)
         adv = returns_np - baseline
@@ -90,15 +87,36 @@ class TRPOAgent(REINFORCEBaselineAgent):
         adv: torch.Tensor,
         valid_masks: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """L = mean(ratio * A), KL ≈ mean(old_logp - new_logp). ratio и A ограничены для стабильности."""
+        """L = mean(ratio * A), KL_sample = mean(old_logp - new_logp) по сэмплам (для логов)."""
         new_logp = self.policy_network.get_log_probs(states, actions_idx, valid_masks)
         log_ratio = new_logp - old_logp
         # Жёсткое ограничение ratio: иначе при больших A суррогат и градиент взрываются
         log_ratio = torch.clamp(log_ratio, -10.0, 10.0)
         ratio = torch.exp(log_ratio)
         surr = (ratio * adv).mean()
-        kl = (old_logp - new_logp).mean()
-        return surr, kl
+        kl_sample = (old_logp - new_logp).mean()
+        return surr, kl_sample
+
+    def _kl_full(
+        self,
+        states: torch.Tensor,
+        valid_masks: torch.Tensor,
+        old_probs: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Полная KL(π_new || π_old) по распределениям над всеми действиями, как в Spinning Up.
+        old_probs: [B, A] — фиксированные π_old(·|s). Сглаживание eps избегает log(0) при детерминированной π_old.
+        """
+        new_logits = self.policy_network.forward(states, valid_masks)
+        new_probs = F.softmax(new_logits, dim=-1)
+        eps = 1e-8
+        # Сглаживание: нет нулевых вероятностей, иначе KL = inf при детерминированной политике
+        num_actions = old_probs.shape[-1]
+        old_probs_safe = old_probs * (1.0 - eps) + eps / num_actions
+        new_probs_safe = new_probs * (1.0 - eps) + eps / num_actions
+        old_dist = Categorical(probs=old_probs_safe)
+        new_dist = Categorical(probs=new_probs_safe)
+        return kl_divergence(new_dist, old_dist).mean()
 
     def _fisher_vector_product(self, kl: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         params = list(self.policy_network.parameters())
@@ -155,19 +173,34 @@ class TRPOAgent(REINFORCEBaselineAgent):
         old_logp: torch.Tensor,
         adv: torch.Tensor,
         valid_masks: torch.Tensor,
+        old_probs: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        """Ограничение по полной KL(π_new || π_old), суррогат по сэмплам."""
         out = {"accepted": 0.0, "alpha": 0.0, "new_kl": 0.0, "new_surrogate": old_surrogate}
+        last_alpha = 0.0
+        last_params = old_params
+        last_kl_v = float("inf")
         for i in range(self.backtrack_iters):
             alpha = self.backtrack_coef ** i
             new_params = old_params + alpha * full_step
             self._set_flat_params(self.policy_network, new_params)
             with torch.no_grad():
-                surr, kl = self._surrogate_and_kl(states, actions_idx, old_logp, adv, valid_masks)
+                surr, _ = self._surrogate_and_kl(states, actions_idx, old_logp, adv, valid_masks)
+                kl_full = self._kl_full(states, valid_masks, old_probs)
             surr_v = float(surr.item())
-            kl_v = float(kl.item())
+            kl_v = float(kl_full.item())
             if surr_v > old_surrogate and kl_v <= self.max_kl:
                 out = {"accepted": 1.0, "alpha": float(alpha), "new_kl": kl_v, "new_surrogate": surr_v}
                 return new_params, out
+            if kl_v <= self.max_kl and np.isfinite(kl_v):
+                last_alpha = alpha
+                last_params = new_params.clone()
+                last_kl_v = kl_v
+        # Fallback: если ни один шаг не улучшил суррогат, принять наименьший шаг с допустимым KL
+        if last_alpha > 0:
+            self._set_flat_params(self.policy_network, last_params)
+            out = {"accepted": 0.5, "alpha": last_alpha, "new_kl": last_kl_v, "new_surrogate": out["new_surrogate"]}
+            return last_params, out
         self._set_flat_params(self.policy_network, old_params)
         return old_params, out
 
@@ -188,17 +221,25 @@ class TRPOAgent(REINFORCEBaselineAgent):
         ]
         self.trajectory_history.append(episode_traj)
 
-        # 2. V(s) по истории, advantages без нормализации
+        # 2. V(s) по таблице истории, advantages
         V = self._estimate_value_table()
         baseline_values = self._predict_baseline(self.saved_states, V)
         returns_np = np.array(returns, dtype=np.float64)
         baseline_mse = float(np.mean((baseline_values - returns_np) ** 2))
         adv = self._get_advantages_tensor(returns, V)
-        # Клиппинг advantages: иначе ratio*A даёт взрыв градиента и коллапс энтропии
-        adv = torch.clamp(adv, -self.max_abs_advantage, self.max_abs_advantage)
+        if self.max_abs_advantage > 0:
+            adv = torch.clamp(adv, -self.max_abs_advantage, self.max_abs_advantage)
+        std = adv.std().item() if adv.numel() > 1 else 0.0
+        if np.isfinite(std) and std > 1e-8:
+            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
         states, actions_idx, old_logp, valid_masks = self._build_batch_tensors()
         old_params = self._flat_params(self.policy_network)
+
+        # Фиксируем π_old по всем действиям для полной KL и FVP
+        with torch.no_grad():
+            old_logits = self.policy_network.forward(states, valid_masks)
+            old_probs = F.softmax(old_logits, dim=-1).clone()
 
         with torch.no_grad():
             surr_old, kl_old = self._surrogate_and_kl(states, actions_idx, old_logp, adv, valid_masks)
@@ -208,10 +249,14 @@ class TRPOAgent(REINFORCEBaselineAgent):
         if not np.isfinite(mean_entropy):
             mean_entropy = 0.0
 
-        # 3. g = ∇ surrogate
+        # 3. g = ∇(surrogate + entropy_coef * entropy) — как в REINFORCE
         self.policy_network.zero_grad(set_to_none=True)
-        surr_for_grad, kl_for_fvp = self._surrogate_and_kl(states, actions_idx, old_logp, adv, valid_masks)
-        grads = torch.autograd.grad(surr_for_grad, list(self.policy_network.parameters()), retain_graph=True)
+        surr_for_grad, _ = self._surrogate_and_kl(states, actions_idx, old_logp, adv, valid_masks)
+        kl_for_fvp = self._kl_full(states, valid_masks, old_probs)
+        entropy_for_grad = self._mean_entropy(states, valid_masks)
+        entropy_coef = getattr(self, "entropy_coef", 0.01)
+        surr_total = surr_for_grad + entropy_coef * entropy_for_grad
+        grads = torch.autograd.grad(surr_total, list(self.policy_network.parameters()), retain_graph=True)
         flat_g = torch.cat([g.reshape(-1) for g in grads]).detach()
 
         if not torch.isfinite(flat_g).all():
@@ -249,6 +294,10 @@ class TRPOAgent(REINFORCEBaselineAgent):
             return self._fisher_vector_product(kl_for_fvp, v)
 
         step_dir = self._scipy_cg_solve(fvp, flat_g)
+        # Суррогат максимизируем: шаг должен быть в направлении роста (step_dir^T g > 0)
+        g_dot_step = float(torch.dot(flat_g, step_dir).item())
+        if g_dot_step < 0:
+            step_dir = -step_dir
         if not torch.isfinite(step_dir).all():
             self._set_flat_params(self.policy_network, old_params)
             self.reset_trajectory()
@@ -286,7 +335,7 @@ class TRPOAgent(REINFORCEBaselineAgent):
 
         _, ls = self._line_search(
             old_params, full_step, old_surrogate,
-            states, actions_idx, old_logp, adv, valid_masks,
+            states, actions_idx, old_logp, adv, valid_masks, old_probs,
         )
 
         with torch.no_grad():

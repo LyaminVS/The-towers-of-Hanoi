@@ -38,6 +38,8 @@ class BaseAgent(ABC):
         self.saved_actions = []
         self.saved_rewards = []
         self.saved_log_probs = []
+        # Для батча: границы эпизодов (кумулятивные длины), None = один эпизод
+        self.saved_episode_ends = None
 
     @abstractmethod
     def select_action(self, state, valid_actions: list, training: bool = True):
@@ -85,6 +87,7 @@ class BaseAgent(ABC):
         self.saved_actions.clear()
         self.saved_rewards.clear()
         self.saved_log_probs.clear()
+        self.saved_episode_ends = None
 
     @abstractmethod
     def update(self) -> dict:
