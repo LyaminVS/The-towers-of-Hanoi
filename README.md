@@ -341,7 +341,73 @@ Computing $F^{-1}g$ directly for networks with thousands of parameters is infeas
    - Verify that $x^T F x > 0$ (the direction is valid).
    - Maximum multiplier: $\beta = \sqrt{2\delta / (x^T F x)}$.
    - Full step: $\Delta\theta = \beta \cdot x$.
-```
+---
+# Results
+
+To evaluate the performance of our approach, we compared three reinforcement learning methods:
+
+- **REINFORCE**
+- **REINFORCE with baseline**
+- **TRPO**
+
+The following figure summarizes the training dynamics for all three methods.
+
+<p align="center">
+<img src="experiments/training_curves.png" width="800">
+</p>
+
+The figure contains three plots that describe different aspects of the training process.
+
+## Total Reward per Episode
+
+The first plot shows the total reward obtained in each episode. Bold curve demonstrates a rolling window of 100 episodes.
+
+Vanilla **REINFORCE** exhibits high variance and slow convergence. The reward curve fluctuates significantly due to the noisy gradient estimates typical for Monte-Carlo policy gradient methods.
+
+Introducing a **baseline** significantly stabilizes the learning process. The **REINFORCE + baseline** variant reduces variance in the gradient estimates and therefore converges faster than vanilla REINFORCE.
+
+However, **TRPO clearly outperforms both REINFORCE variants**, reaching high reward values much earlier in training and maintaining a much more stable trajectory.
+
+---
+
+## Success Rate
+
+The second plot shows the **success rate of solving the puzzle**, computed using a rolling window of 100 episodes.
+
+All algorithms eventually learn to solve the Tower of Hanoi puzzle, but the convergence speed differs substantially:
+
+- **TRPO reaches near-perfect success rates within the first few hundred episodes.**
+- **REINFORCE + baseline converges slower but still significantly faster than vanilla REINFORCE.**
+- **Vanilla REINFORCE requires the largest number of training episodes to achieve consistent success.**
+
+This clearly demonstrates the advantage of the trust region optimization used in TRPO.
+
+---
+
+## Steps per Episode
+
+The third plot shows the number of steps required to complete an episode. Bold curve demonstrates a rolling window of 100 episodes.
+
+Lower values indicate that the agent has learned a more efficient strategy.
+
+Again, we observe that:
+
+- **TRPO quickly converges to near-optimal solutions**
+- **REINFORCE + baseline learns a reasonable strategy but requires more training**
+- **Vanilla REINFORCE remains significantly more unstable**
+
+---
+
+## Key Findings
+
+The experimental results highlight several important conclusions:
+
+- **TRPO learns substantially faster than both REINFORCE variants.**
+- **TRPO produces significantly more stable training dynamics.**
+- Adding a **baseline improves REINFORCE performance**, but it still cannot match the stability and efficiency of TRPO.
+
+Overall, these experiments demonstrate that **trust-region based policy optimization provides clear advantages over vanilla policy gradient methods for structured decision-making problems such as the Tower of Hanoi puzzle.**
+
 
 # Running the Project 
 
