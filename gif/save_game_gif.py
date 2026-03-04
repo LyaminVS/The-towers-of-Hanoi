@@ -88,7 +88,6 @@ def main():
     action_space = get_action_space(settings.NUM_STICKS)
     agent_config = {
         "learning_rate": settings.REINFORCE_LR,
-        "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF", 0.01),

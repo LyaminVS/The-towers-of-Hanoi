@@ -10,6 +10,7 @@ REINFORCE — vanilla policy gradient с опциональным baseline.
 
 import torch
 import torch.nn.functional as F
+from torch.nn.utils import clip_grad_norm_, parameters_to_vector
 import numpy as np
 
 from .base_agent import BaseAgent
@@ -32,7 +33,7 @@ class REINFORCEAgent(BaseAgent):
 
     Config keys:
         learning_rate   (float, default 1e-3)
-        discount_factor (float, default 0.99)
+        gamma           (float, default 0.99)
         hidden_dims     (list,  default [64, 64])
         entropy_coef    (float, default 0.01)
     """
@@ -50,8 +51,9 @@ class REINFORCEAgent(BaseAgent):
             self.policy_network.parameters(),
             lr=config.get("learning_rate", 1e-3),
         )
-        self.gamma = config.get("discount_factor", 0.99)
+        self.gamma = config.get("gamma", 0.99)
         self.entropy_coef = config.get("entropy_coef", 0.01)
+        self.max_grad_norm = config.get("max_grad_norm", 10.0)
         self.value_network = None
         self.saved_valid_actions: list = []
         self._last_valid_actions: list = []
@@ -138,12 +140,25 @@ class REINFORCEAgent(BaseAgent):
 
         self.policy_optimizer.zero_grad()
         total_loss.backward()
+        
+        # Вычисляем норму градиента до clipping
+        grad_norm = None
+        grads = [p.grad for p in self.policy_network.parameters() if p.grad is not None]
+        if len(grads) > 0:
+            grad_vec = parameters_to_vector(grads)
+            grad_norm = float(torch.norm(grad_vec).item())
+        
+        if self.max_grad_norm > 0:
+            clip_grad_norm_(self.policy_network.parameters(), self.max_grad_norm)
         self.policy_optimizer.step()
 
         self.reset_trajectory()
-        return {
+        result = {
             "policy_loss": policy_loss.item(),
             "entropy": mean_entropy.item(),
             "baseline_mse": baseline_mse,
             "mean_return": float(returns[0]),
         }
+        if grad_norm is not None:
+            result["grad_norm"] = grad_norm
+        return result

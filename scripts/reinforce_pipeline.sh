@@ -1,28 +1,28 @@
 #!/bin/bash
-# Пайплайн REINFORCE: фаза 1 (базовое) -> фаза 2 (дообучение)
-# Все параметры заданы здесь — меняй по необходимости
+# Pipeline REINFORCE: phase 1 (basic) -> phase 2 (finetuning)
+# All parameters are set here - change as needed
 
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p logs
 
-# ========== ПАРАМЕТРЫ (как в config/settings.py) ==========
-# Меняй значения здесь, не трогая settings.py
+# ========== PARAMETERS ==========
+# Change values here, don't touch settings.py
 
-# --- Воспроизводимость ---
-SEED=42  # Seed для воспроизводимости (меняй здесь)
+# --- Reproducibility ---
+SEED=43
 
-# --- Игра ---
+# --- Game ---
 NUM_DISKS=4
 NUM_STICKS=3
 
-# --- Метод агента ---
+# --- Agent method ---
 AGENT_METHOD="reinforce"
 
-# --- Награды ---
+# --- Rewards ---
 REWARD_STEP_PHASE1=-10.0
-REWARD_GOAL_PHASE1=5000.0
-REWARD_INVALID_MOVE_PHASE1=-50.0
+REWARD_GOAL_PHASE1=4000.0
+REWARD_INVALID_MOVE_PHASE1=-50
 REWARD_CORRECT_PLACEMENT_PHASE1=0
 
 REWARD_STEP_PHASE2=-300.0
@@ -30,18 +30,23 @@ REWARD_GOAL_PHASE2=4000.0
 REWARD_INVALID_MOVE_PHASE2=-50.0
 REWARD_CORRECT_PLACEMENT_PHASE2=100
 
-# --- Обучение ---
+# --- Training ---
 MAX_STEPS=200
 LOG_INTERVAL=100
 CHECKPOINT_INTERVAL=1000
+VALUE_ESTIMATOR="zero"
 
-# --- Фаза 1 ---
-NUM_EPISODES_PHASE1=20000
+# --- Gradient Clipping ---
+ENABLE_GRAD_CLIPPING=true  # true = включено, false = выключено
+MAX_GRAD_NORM=10.0
+
+# --- Phase 1 ---
+NUM_EPISODES_PHASE1=10000
 RANDOM_INIT_PHASE1="--random_init"
 ENTROPY_ADAPTIVE_PHASE1="--no-entropy_adaptive"
 ENTROPY_COEF_PHASE1=0
 
-# --- Фаза 2 ---
+# --- Phase 2 ---
 NUM_EPISODES_PHASE2=5000
 RANDOM_INIT_PHASE2="--no-random_init"
 ENTROPY_ADAPTIVE_PHASE2="--entropy_adaptive"
@@ -49,17 +54,22 @@ ENTROPY_COEF_MIN_PHASE2=0
 ENTROPY_COEF_MAX_PHASE2=2500
 ENTROPY_WINDOW_PHASE2=100
 
-# --- Пути ---
+# --- Paths ---
 MODEL_PHASE1="model_reinforce_phase1.pth"
 MODEL_PHASE2="model_reinforce_phase2.pth"
 HISTORY_PHASE1="logs/training_history_reinforce_phase1.json"
 HISTORY_PHASE2="logs/training_history_reinforce_phase2.json"
 
-# ========== ФАЗА 1 ==========
-echo "=== Фаза 1: Базовое обучение (REINFORCE) ==="
-echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD"
+# Преобразуем ENABLE_GRAD_CLIPPING в MAX_GRAD_NORM
+if [ "$ENABLE_GRAD_CLIPPING" = "false" ]; then
+  MAX_GRAD_NORM=0
+fi
+
+# ========== PHASE 1 ==========
+echo "=== Phase 1: Basic training (REINFORCE) ==="
+echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD | Baseline: $VALUE_ESTIMATOR"
 echo "  REWARD_STEP=$REWARD_STEP_PHASE1, RANDOM_INIT=True, entropy_adaptive=False"
-echo "  Эпизодов: $NUM_EPISODES_PHASE1"
+echo "  Episodes: $NUM_EPISODES_PHASE1"
 echo ""
 
 python run/train.py \
@@ -78,16 +88,18 @@ python run/train.py \
     $RANDOM_INIT_PHASE1 \
     $ENTROPY_ADAPTIVE_PHASE1 \
     --entropy_coef "$ENTROPY_COEF_PHASE1" \
+    --max_grad_norm "$MAX_GRAD_NORM" \
+    --value_estimator "$VALUE_ESTIMATOR" \
     --save_model "$MODEL_PHASE1" \
     --history_path "$HISTORY_PHASE1"
 
-# ========== ФАЗА 2 ==========
+# ========== PHASE 2 ==========
 echo ""
-echo "=== Фаза 2: Дообучение (REINFORCE) ==="
+echo "=== Phase 2: Finetuning (REINFORCE) ==="
 echo "  Disks: $NUM_DISKS | Sticks: $NUM_STICKS | Method: $AGENT_METHOD"
 echo "  REWARD_STEP=$REWARD_STEP_PHASE2, RANDOM_INIT=False, entropy_adaptive=True"
-echo "  Эпизодов: $NUM_EPISODES_PHASE2"
-echo "  Загрузка: $MODEL_PHASE1"
+echo "  Episodes: $NUM_EPISODES_PHASE2"
+echo "  Loading: $MODEL_PHASE1"
 echo ""
 
 python run/train.py \
@@ -109,12 +121,15 @@ python run/train.py \
     --entropy_coef_min "$ENTROPY_COEF_MIN_PHASE2" \
     --entropy_coef_max "$ENTROPY_COEF_MAX_PHASE2" \
     --entropy_window "$ENTROPY_WINDOW_PHASE2" \
+    --max_grad_norm "$MAX_GRAD_NORM" \
+    --value_estimator "$VALUE_ESTIMATOR" \
     --save_model "$MODEL_PHASE2" \
     --history_path "$HISTORY_PHASE2"
 
 echo ""
-echo "=== Готово ==="
-echo "  Модель после фазы 1: $MODEL_PHASE1"
-echo "  Модель после фазы 2: $MODEL_PHASE2"
-echo "  История фазы 1: $HISTORY_PHASE1"
-echo "  История фазы 2: $HISTORY_PHASE2"
+echo "=== Done ==="
+echo "  Model after phase 1: $MODEL_PHASE1"
+echo "  Model after phase 2: $MODEL_PHASE2"
+echo "  History phase 1: $HISTORY_PHASE1"
+echo "  History phase 2: $HISTORY_PHASE2"
+

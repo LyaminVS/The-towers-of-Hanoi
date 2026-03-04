@@ -43,7 +43,7 @@ class TRPOAgent(BaseAgent):
     TRPO Agent.
 
     Config keys (defaults):
-      - discount_factor: 0.99
+      - gamma: 0.99
       - hidden_dims: [64, 64]
       - max_kl: 0.01
       - cg_iters: 10
@@ -71,7 +71,7 @@ class TRPOAgent(BaseAgent):
         hidden_dims = config.get("hidden_dims", [64, 64])
         self.policy_network = PolicyNetwork(observation_dim, action_dim, hidden_dims)
 
-        self.gamma = float(config.get("discount_factor", 0.99))
+        self.gamma = float(config.get("gamma", 0.99))
 
         self.max_kl = float(config.get("max_kl", config.get("TRPO_MAX_KL", 0.01)))
         self.cg_iters = int(config.get("cg_iters", config.get("TRPO_CG_ITERS", 10)))
@@ -80,7 +80,7 @@ class TRPOAgent(BaseAgent):
         self.backtrack_coef = float(config.get("backtrack_coef", config.get("TRPO_BACKTRACK_COEF", 0.5)))
         self.damping = float(config.get("damping", 1e-2))
         self.advantage_norm = bool(config.get("advantage_norm", True))
-        self.max_grad_norm = float(config.get("max_grad_norm", 10.0))
+        self.max_grad_norm = float(config.get("max_grad_norm", config.get("MAX_GRAD_NORM", 10.0)))
 
     # ---------------- acting ----------------
 
@@ -270,6 +270,10 @@ class TRPOAgent(BaseAgent):
         grads = torch.autograd.grad(surrogate_for_grad, tuple(self.policy_network.parameters()), retain_graph=True)
         flat_g = torch.cat([g.reshape(-1) for g in grads]).detach()
 
+        # Вычисляем норму градиента до clipping
+        grad_norm = flat_g.norm()
+        grad_norm_val = float(grad_norm.item())
+
         # Клиппинг нормы градиента — защита от NaN/inf в CG
         if not torch.isfinite(flat_g).all():
             self._set_flat_params(self.policy_network, old_params)
@@ -284,8 +288,9 @@ class TRPOAgent(BaseAgent):
                 "policy_kl_new": old_kl,
                 "value_loss": value_loss,
                 "cg_shs": 0.0,
+                "grad_norm": grad_norm_val,
             }
-        grad_norm = flat_g.norm()
+        
         if grad_norm > self.max_grad_norm:
             flat_g = flat_g * (self.max_grad_norm / grad_norm)
 
@@ -308,6 +313,7 @@ class TRPOAgent(BaseAgent):
                 "policy_kl_new": old_kl,
                 "value_loss": value_loss,
                 "cg_shs": 0.0,
+                "grad_norm": grad_norm_val,
             }
 
         F_step = fvp(step_dir)
@@ -327,6 +333,7 @@ class TRPOAgent(BaseAgent):
                 "policy_kl_new": old_kl,
                 "value_loss": value_loss,
                 "cg_shs": shs_val,
+                "grad_norm": grad_norm_val,
             }
 
         max_step = np.sqrt((2.0 * self.max_kl) / (shs_val + 1e-12))
@@ -355,6 +362,7 @@ class TRPOAgent(BaseAgent):
             "policy_kl_new": float(kl_new.item()),
             "value_loss": value_loss,
             "cg_shs": shs_val,
+            "grad_norm": grad_norm_val,
         }
 
         self.reset_trajectory()

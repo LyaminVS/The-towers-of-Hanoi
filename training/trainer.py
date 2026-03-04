@@ -57,7 +57,7 @@ def train(
     entropy_coef_max=0.2,
     entropy_window=100,
 ):
-    gamma = agent.config.get("discount_factor", 0.99)
+    gamma = agent.config.get("gamma", 0.99)
     history = []
     steps_buffer = []  # для скользящего среднего
 
@@ -109,6 +109,8 @@ def train(
                 "loss": update_metrics.get("policy_loss", 0) if update_metrics else 0,
                 "entropy": update_metrics.get("entropy", 0) if update_metrics else 0,
             }
+            if update_metrics and "grad_norm" in update_metrics:
+                log_kw["grad_norm"] = update_metrics["grad_norm"]
             if "entropy_coef" in episode_metrics:
                 log_kw["entropy_coef"] = episode_metrics["entropy_coef"]
             log_episode(

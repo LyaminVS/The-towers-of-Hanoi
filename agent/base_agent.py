@@ -25,7 +25,7 @@ class BaseAgent(ABC):
         Input:
             observation_dim — размерность наблюдения (state/observation)
             action_space — список всех действий [(from, to), ...] из get_action_space
-            config — словарь гиперпараметров: learning_rate, discount_factor,
+            config — словарь гиперпараметров: learning_rate, gamma,
                     hidden_dims, и др. в зависимости от метода
         Output: —
         """

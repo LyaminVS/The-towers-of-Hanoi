@@ -63,6 +63,8 @@ def parse_args() -> object:
                         help="Override REINFORCE_ENTROPY_COEF_MAX")
     parser.add_argument("--entropy_window", type=int, default=None,
                         help="Override REINFORCE_ENTROPY_WINDOW")
+    parser.add_argument("--max_grad_norm", type=float, default=None,
+                        help="Override MAX_GRAD_NORM (gradient clipping)")
     parser.add_argument("--log_interval", type=int, default=None,
                         help="Override LOG_INTERVAL from config")
     parser.add_argument("--history_path", type=str, default=None,
@@ -114,6 +116,8 @@ def main():
         settings.REINFORCE_ENTROPY_COEF_MAX = args.entropy_coef_max
     if args.entropy_window is not None:
         settings.REINFORCE_ENTROPY_WINDOW = args.entropy_window
+    if args.max_grad_norm is not None:
+        settings.MAX_GRAD_NORM = args.max_grad_norm
     if args.log_interval is not None:
         settings.LOG_INTERVAL = args.log_interval
     if args.no_entropy_adaptive:
@@ -154,11 +158,11 @@ def main():
     entropy_adaptive = args.entropy_adaptive or getattr(settings, "REINFORCE_ENTROPY_ADAPTIVE", False)
     agent_config = {
         "learning_rate": settings.REINFORCE_LR,
-        "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "entropy_coef": getattr(settings, "REINFORCE_ENTROPY_COEF_MAX", 0.2) if entropy_adaptive else getattr(settings, "REINFORCE_ENTROPY_COEF", 0.1),
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
+        "max_grad_norm": getattr(settings, "MAX_GRAD_NORM", 10.0),
         "num_disks": settings.NUM_DISKS,
         "num_sticks": settings.NUM_STICKS,
         "history_len": getattr(settings, "HISTORY_LEN", 20),

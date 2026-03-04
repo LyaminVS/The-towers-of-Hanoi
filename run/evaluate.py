@@ -155,10 +155,10 @@ def main() -> None:
     action_space = get_action_space(settings.NUM_STICKS)
     agent_config = {
         "learning_rate": settings.REINFORCE_LR,
-        "discount_factor": settings.DISCOUNT_FACTOR,
         "gamma": settings.GAMMA,
         "hidden_dims": settings.REINFORCE_HIDDEN_DIMS,
         "max_kl": getattr(settings, "TRPO_MAX_KL", 0.01),
+        "max_grad_norm": getattr(settings, "MAX_GRAD_NORM", 10.0),
         "num_disks": args.num_disks,
         "num_sticks": settings.NUM_STICKS,
         "history_len": getattr(settings, "HISTORY_LEN", 20),
