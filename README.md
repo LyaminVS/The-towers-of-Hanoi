@@ -208,13 +208,7 @@ is called the **advantage** and measures how much better the actual return from 
 So for gradient like in the theory for REINFORCE with the fact that substracting from $G_t$ any function of state $S_t$ random variable $-$ $b(S_t)$ leaves the gradient expectation unchanged:
 
 $$
-\nabla_\theta J(\theta)
-=
-\mathbb{E}
-\left[
-\sum_{t=0}^{T}
-\nabla_\theta \log \pi_\theta(A_t\mid S_t)\, A_t
-\right]
+\nabla_\theta J(\theta) = \mathbb{E} \left[\sum_{t=0}^{T}\nabla_\theta \log \pi_\theta(A_t\mid S_t)\,A_t\right]
 $$
 
 ### State Encoding
@@ -262,6 +256,115 @@ This is an **incremental mean**: on completion, $V[\text{idx}(s)]$ equals the un
 The reward function, discount factor $\gamma$, policy network architecture, optimizer, entropy regularisation coefficient, and all other hyperparameters are **identical** to those used for the plain REINFORCE agent (Section 2).
 The only structural difference is the subtraction of $\hat{V}(s_t)$ from each return realization $g_t$ before computing the policy loss.
 
+
+## 4) TRPO — Trust Region Policy Optimization
+
+### 1. General Theory
+
+#### 1.1 Surrogate Objective
+
+The goal of policy optimization is to find parameters $\theta$ that maximize the expected discounted return:
+
+$$V(\pi) = \mathbb{E}_{s_0, a_0, \ldots} \left[\sum_{t=0}^{\infty} \gamma^t r(s_t)\right]$$
+
+A key identity relates the performance of a new policy $\tilde{\pi}$ to the current policy $\pi$ through the advantage function:
+
+$$V(\tilde{\pi}) = V(\pi) + \sum_s \rho_{\tilde{\pi}}(s) \sum_a \tilde{\pi}(a|s)\, A_\pi(s, a)$$
+
+where $\rho_{\tilde{\pi}}(s) = \sum_{t=0}^{\infty} \gamma^t P(S_t = s \mid \tilde{\pi})$ is the discounted state visitation frequency under the new policy, and $\mathcal{A}_\pi(S,A) = Q_\pi(S,A) - V_\pi(S)$ is the advantage of the current policy.
+
+This identity implies that if the new policy $\tilde{\pi}$ has non-negative expected advantage at every state, then $V(\tilde{\pi}) \geq V(\pi)$. However, direct optimization of this expression is difficult because $\rho_{\tilde{\pi}}$ depends on $\tilde{\pi}$.
+
+To address this, the **surrogate objective** is introduced:
+
+$$L_\pi(\tilde{\pi}) = V(\pi) + \sum_s \rho_\pi(s) \sum_a \tilde{\pi}(a|s) A_\pi(s, a)$$
+
+The surrogate $L_\pi$ differs from the exact expression for $V(\tilde{\pi})$ in that it uses the visitation frequencies $\rho_\pi$ from the **old** policy instead of $\rho_{\tilde{\pi}}$ from the new one.
+
+#### 1.2 Approximation: Replacing $\rho_{\tilde{\pi}}$ with $\rho_\pi$
+
+Replacing $\rho_{\tilde{\pi}}$ with $\rho_\pi$ is the key approximation in TRPO. It is valid in the following sense: the surrogate $L_\pi$ matches $V$ to first order in the parameters:
+
+$$L_{\pi_{\theta_0}}(\pi_{\theta_0}) = V(\pi_{\theta_0}), \qquad \nabla_\theta L_{\pi_{\theta_0}}(\pi_\theta)\big|_{\theta = \theta_0} = \nabla_\theta V(\pi_\theta)\big|_{\theta = \theta_0}$$
+
+That is, at the current parameter values the function values and gradients coincide. This means that a **sufficiently small** step improving $L_\pi$ is guaranteed to improve $V$ as well.
+
+The problem is that for large steps the approximation $\rho_{\tilde{\pi}} \approx \rho_\pi$ breaks down: the new policy begins visiting different states, and the surrogate ceases to be a reliable proxy for the true performance. A mechanism to control the step size is needed.
+
+Kakade and Langford (2002) showed that for mixture policies an explicit lower bound on the improvement of $V$ can be derived. Schulman et al. generalized this result to arbitrary stochastic policies:
+
+$$V(\tilde{\pi}) \geq L_\pi(\tilde{\pi}) - \frac{4\gamma\epsilon}{(1 - \gamma)^2} \alpha^2$$
+
+where $\epsilon = \max_{s,a} |A_\pi(s,a)|$, and $\alpha = \max_s D_{TV}(\pi(\cdot|s) \| \tilde{\pi}(\cdot|s))$ is the maximum total variation divergence between the policies. Using the relation $D_{TV}^2 \leq D_{KL}$, we obtain:
+
+$$V(\tilde{\pi}) \geq L_\pi(\tilde{\pi}) - C \cdot D_{KL}^{\max}(\pi, \tilde{\pi}), \qquad C = \frac{4\gamma}{(1 - \gamma)^2}$$
+
+In summary: the approximation $\rho_{\tilde{\pi}} \approx \rho_\pi$ is justified when the KL divergence between the old and new policies is small. The closer the new policy is to the old one (in the KL sense), the more accurately the surrogate $L_\pi$ reflects the actual change in $V$.
+
+### 1.3 Step Selection: From Penalty to Trust Region
+
+The theory suggests maximizing $L_\pi(\tilde{\pi}) - C \cdot D_{KL}^{\max}(\pi, \tilde{\pi})$, which guarantees monotonic improvement. However, the constant $C = 4\gamma/(1-\gamma)^2$ is enormous in practice and leads to negligibly small steps.
+
+Instead of a penalty, TRPO uses a **constraint** on the KL divergence:
+
+$$\max_\theta L_{\theta_\text{old}}(\theta) \qquad \text{s.t.}\quad \bar{D}_{KL}(\theta_\text{old}, \theta) \leq \delta$$
+
+where $\bar{D}_{KL}$ is the average KL divergence over states (rather than the maximum, which would be computationally intractable). The parameter $\delta$ (in the original paper and in our implementation, $\delta = 0.01$ by default) defines the size of the trust region — the region of parameter space where the surrogate remains a reliable approximation.
+
+To solve this constrained problem, the **natural gradient** is used. Linearizing $L$ and quadratically approximating the KL constraint yields:
+
+$$\max_\theta \nabla_\theta L\big|_{\theta_\text{old}} \cdot (\theta - \theta_\text{old}) \qquad \text{s.t.}\quad \tfrac{1}{2}(\theta - \theta_\text{old})^T F (\theta - \theta_\text{old}) \leq \delta$$
+
+where $F$ is the Fisher information matrix (the Hessian of the KL divergence). The solution is $\theta_\text{new} = \theta_\text{old} + \beta F^{-1} g$, where $g = \nabla_\theta L\big|_{\theta_\text{old}}$ is the gradient of the surrogate, and the maximum step size is:
+
+$$\beta = \sqrt{\frac{2\delta}{g^T F^{-1} g}}$$
+
+Computing $F^{-1}g$ directly for networks with thousands of parameters is infeasible. Instead, **conjugate gradient (CG)** is used: the system $Fx = g$ is solved iteratively using only Fisher-vector products $F \cdot v$, without ever forming the matrix $F$ explicitly.
+
+---
+
+### 2. Practical Algorithm and Our Implementation
+
+#### Overview of a Single TRPO Update Step
+
+1. **Trajectory collection.** The agent runs an episode, storing states, actions, log-probabilities, and valid actions.
+
+2. **Computing returns and advantages.**
+   Returns $g_t = \sum_{k=0}^{T-t-1} \gamma^k r_{t+k}$ are computed in the standard way. The baseline $V_\pi(s)$ is estimated using a **tabular** method over episode history (inherited from `REINFORCEBaselineAgent` and described in section 3 for baseline REINFORCE): for each discrete state $V_\pi(s)$ is the mean of observed returns. The advantage is then: $a_t = g_t - V_\pi(s_t)$.
+
+3. **Fixing the old policy.** The probabilities $\pi_\text{old}(\cdot|s)$ — the distribution over all actions for each state in the batch — are saved. They are used for computing the full KL divergence and Fisher-vector products.
+
+4. **Computing the surrogate gradient.** The surrogate is expressed via the importance sampling ratio:
+
+   $$L(\theta) = \frac{1}{T}\sum_{t=1}^{T} \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_\text{old}}(a_t|s_t)} A_t$$
+
+   In the code, the log-ratio is clamped to $[-10, 10]$ for numerical stability. The gradient is computed with an entropy bonus: $\nabla_\theta \left[(1-\alpha) L + \alpha H\right]$, where $\alpha$ is the entropy coefficient (0.01 by default). This prevents premature collapse of the policy into a deterministic one.
+
+   If the gradient norm exceeds `max_grad_norm_cg` (default 50.0), the gradient is scaled down before being passed to CG.
+
+5. **Conjugate Gradient (CG).** We solve $(F + \lambda I) x = g$, where $\lambda$ is the damping coefficient (default 0.01) added to regularize the Fisher matrix. The Fisher-vector product is computed via double automatic differentiation:
+   - First `autograd.grad`: obtain the gradient of KL with respect to the parameters.
+   - Dot product of this gradient with the vector $v$.
+   - Second `autograd.grad`: obtain $Fv$.
+
+   The implementation uses `scipy.sparse.linalg.cg` (when available) with `maxiter = 10` iterations by default.
+
+6. **Computing the full step.** After obtaining $x \approx F^{-1}g$ from CG:
+   - Verify that $x^T F x > 0$ (the direction is valid).
+   - Maximum multiplier: $\beta = \sqrt{2\delta / (x^T F x)}$.
+   - Full step: $\Delta\theta = \beta \cdot x$.
+
+   If $x^T g < 0$ (the CG direction does not align with the direction of surrogate increase), the sign of $x$ is flipped.
+
+7. **Line search with KL constraint check.** The full step may violate the nonlinear KL constraint or degrade the surrogate, so a backtracking line search is performed:
+   - Try $\alpha_i = 1, 0.5, 0.25, \ldots$ (up to `backtrack_iters = 10` steps).
+   - At each step, two conditions are checked: (a) the surrogate improves, $L(\theta_\text{new}) > L(\theta_\text{old})$, and (b) the full KL divergence satisfies $D_{KL}(\pi_\text{new} \| \pi_\text{old}) \leq \delta$.
+   - The first step satisfying both conditions is accepted.
+   - If no step improved the surrogate but one satisfies the KL constraint, it is accepted as a fallback.
+   - If nothing qualifies, the parameters are reverted to $\theta_\text{old}$.
+
+   The KL is computed as the **full** KL divergence over the distributions across all actions (not sample-based), with smoothing $\epsilon = 10^{-8}$ to prevent $\log(0)$ when the policy is near-deterministic.
+```
 
 # Running the Project 
 
