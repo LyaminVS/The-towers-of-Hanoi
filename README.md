@@ -24,25 +24,31 @@ We model the Tower of Hanoi puzzle as a **Markov Decision Process (MDP)**.
 We will play with 3 pegs. The last peg is the third one.
 Let $n$ be the number of disks.  
 A state is represented by the vector:
+
 $$
 s = (p_1, h_1, \dots, p_n, h_n),
 $$
+
 where $p_i$ is the peg index holding disk $i$. Disk indices correspond to sizes: disk $1$ is the smallest, disk $n$ is the largest. $h_i$ is the height of the disk $i$ on its peg $p_i$. $h_i=0$ means that disk $i$ lies on the bottom of the peg $p_i$
 
 ### Action Space
 
 An action corresponds to moving the top disk from source peg $i$ to target peg $j$:
+
 $$
 a = (i \rightarrow j), \qquad i,j \in \{1,2,3\}, \quad i \neq j.
 $$
+
 An action is **valid** only if the moved disk is smaller than the top disk on peg $j$. If a source peg $i$ is empty, no disk moves with this action.
 
 ### Transition Function
 
 The transition function is deterministic:
+
 $$
 s_{t+1} = T(s_t, a_t).
 $$
+
 If $a_t$ is valid, the environment applies the corresponding disk move (or no move if a source peg is empty). If $a_t$ is invalid, the state remains unchanged.
 
 ### Reward Function
@@ -53,6 +59,7 @@ We use three types of rewards:
 - victory reward $r_{\text{victory}}$.
 
 In Phase 1 (initial experiments):
+
 $$
 r(s,a)=
 \begin{cases}
@@ -76,6 +83,7 @@ We train a stochastic policy $\pi_\theta(a\mid S_t)$ (neural network parameters 
 ### Objective
 
 The goal is to maximize the expected discounted return:
+
 $$
 v^{\pi^\theta}(s_{start})=
 \mathbb{E}_{\pi_\theta}
@@ -83,6 +91,7 @@ v^{\pi^\theta}(s_{start})=
 \sum_{t=0}^{\tau-1} \gamma^t R_t | S_0=s_{start}
 \right].
 $$
+
 where $s_{start}=(0, 0, 0, 1, 0, 2)$
 
 
@@ -98,6 +107,7 @@ And make a step to maximize the following loss:
 $$
 L(\theta) = -\sum_{t=0}^{\tau-1} G_t \log \pi_\theta(a_t|s_t)
 $$
+
 where $G_t = \sum_{k=t}^{\tau-1} \gamma^{k-t} r_k$
 
 ---
@@ -184,19 +194,24 @@ Example:
 
 REINFORCE with baseline reduces the variance of the policy gradient estimator without introducing bias.
 For any state-dependent function $b(s_t)$ the following identity holds:
+
 $$
 \mathbb{E}_{\pi_\theta}\!\left[\nabla_\theta \log \pi_\theta(A_t\mid S_t)\, b(S_t)\right] = 0,
 $$
+
 so subtracting $b(S_t)$ from the return leaves the gradient expectation unchanged while reducing its variance (hopefully).
 
 We use the **value function estimate** $\hat{V}(s)$ as the baseline.
 The resulting random variable
+
 $$
 A_t = G_t - \hat{V}(S_t)
 $$
+
 is called the **advantage** and measures how much better the actual return from step $t$ is compared to the expected return from state $s_t$.
 
 So for gradient like in the theory for REINFORCE with the fact that substracting from $G_t$ any function of state $S_t$ random variable $-$ $b(S_t)$ leaves the gradient expectation unchanged:
+
 $$
 \nabla_\theta J(\theta)
 =
@@ -213,9 +228,11 @@ Because disk heights are uniquely determined by peg assignments, the full state
 $s = ((p_0, h_0), \dots, (p_{n-1}, h_{n-1}))$ is characterised solely by the peg assignment vector
 $(p_0, \ldots, p_{n-1})$ (0-indexed, $p_i \in \{0,1,2\}$).
 We map it to a unique integer index via a mixed-radix encoding:
+
 $$
 \text{idx}(s) = \sum_{i=0}^{n-1} p_i \cdot P^{i},
 $$
+
 where $P = 3$ is the number of pegs.
 The total number of distinct states is $P^n = 3^n$.
 Inverse (decoding) is obviously can be uptained by iterative division $\text{idx}(s)$ by $P$.
@@ -229,6 +246,7 @@ The baseline $\hat{V}$ is a table of size $P^n$, recomputed from scratch before 
 1. Set $V[i] = 0$, $\; c[i] = 0$ for all $i \in \{0, \ldots, P^n - 1\}$.
 2. For each trajectory $\tau$ in the history buffer (oldest to newest):
    - For each pair $(s_t,\, G_t)$ in $\tau$:
+
 $$
 V[\text{idx}(s_t)]
 \;\mathrel{+}=\;
@@ -238,6 +256,7 @@ V[\text{idx}(s_t)]
 c[\text{idx}(s_t)]
 \;\mathrel{+}=\; 1.
 $$
+
 3. Return $V$.
 
 This is an **incremental mean**: on completion, $V[\text{idx}(s)]$ equals the unweighted average of all Monte Carlo returns $G_t$ collected from state $s$ across the history buffer.
