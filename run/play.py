@@ -14,12 +14,30 @@ from env.rewards import Reward
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Play Tower of Hanoi.")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility (default: 42)")
     # По умолчанию берем значения из settings.py
     parser.add_argument("--num_disks", type=int, default=settings.NUM_DISKS, help="Number of disks")
     return parser.parse_args()
 
 def main():
     args = parse_args()
+    
+    # Установка seed для воспроизводимости
+    import numpy as np
+    import torch
+    import random
+    
+    if args.seed is not None:
+        settings.SEED = args.seed
+    
+    seed = settings.SEED
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
     
     # 1. Создаем схему наград напрямую из конфига
     reward_scheme = Reward.from_config(settings)

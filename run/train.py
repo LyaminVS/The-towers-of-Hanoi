@@ -17,6 +17,8 @@ from utils.params import save_history
 
 def parse_args() -> object:
     parser = argparse.ArgumentParser(description="Train Tower of Hanoi agent")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility (default: 42)")
     parser.add_argument("--num_disks", type=int, default=None,
                         help="Override NUM_DISKS from config")
     parser.add_argument("--num_sticks", type=int, default=None,
@@ -68,6 +70,22 @@ def parse_args() -> object:
 def main():
     args = parse_args()
 
+    # Установка seed для воспроизводимости
+    import numpy as np
+    import torch
+    import random
+    
+    if args.seed is not None:
+        settings.SEED = args.seed
+    
+    seed = settings.SEED
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
     # Переопределение параметров из CLI
     if args.num_disks is not None:
         settings.NUM_DISKS = args.num_disks
@@ -109,6 +127,7 @@ def main():
         settings.REINFORCE_ENTROPY_ADAPTIVE = True
 
     log_message(f"=== Starting Training Session ===")
+    log_message(f"SEED: {seed} (deterministic mode)")
     log_message(f"Method: {settings.AGENT_METHOD} | Disks: {settings.NUM_DISKS}")
     if entropy_adaptive:
         log_message(f"Entropy adaptive: min={getattr(settings, 'REINFORCE_ENTROPY_COEF_MIN', 0.01)}, max={getattr(settings, 'REINFORCE_ENTROPY_COEF_MAX', 0.2)}")

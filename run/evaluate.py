@@ -23,6 +23,8 @@ def parse_args() -> object:
     Парсинг аргументов командной строки.
     """
     parser = argparse.ArgumentParser(description="Evaluate trained Tower of Hanoi agent")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility (default: 42)")
     parser.add_argument("--load_model", type=str, default=settings.EVAL_MODEL_PATH)
     parser.add_argument("--num_disks", type=int, default=settings.NUM_DISKS)
     parser.add_argument("--agent_method", type=str, default=settings.AGENT_METHOD,
@@ -120,6 +122,22 @@ def evaluate(env, agent, num_episodes: int = 10, render: bool = False, delay_ms:
 
 def main() -> None:
     args = parse_args()
+
+    # Установка seed для воспроизводимости
+    import numpy as np
+    import torch
+    import random
+    
+    if args.seed is not None:
+        settings.SEED = args.seed
+    
+    seed = settings.SEED
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
 
     reward_scheme = Reward.from_config(settings)
 

@@ -9,6 +9,9 @@ mkdir -p logs
 # ========== ПАРАМЕТРЫ (как в config/settings.py) ==========
 # Меняй значения здесь, не трогая settings.py
 
+# --- Воспроизводимость ---
+SEED=42  # Seed для воспроизводимости (меняй здесь)
+
 # --- Игра ---
 NUM_DISKS=4
 NUM_STICKS=3
@@ -17,10 +20,10 @@ NUM_STICKS=3
 AGENT_METHOD="reinforce_baseline"
 
 # --- Награды ---
-REWARD_STEP_PHASE1=-1.0
-REWARD_GOAL_PHASE1=4000.0
+REWARD_STEP_PHASE1=-10.0
+REWARD_GOAL_PHASE1=5000.0
 REWARD_INVALID_MOVE_PHASE1=-50.0
-REWARD_CORRECT_PLACEMENT_PHASE1=100
+REWARD_CORRECT_PLACEMENT_PHASE1=0
 
 REWARD_STEP_PHASE2=-300.0
 REWARD_GOAL_PHASE2=4000.0
@@ -36,7 +39,7 @@ CHECKPOINT_INTERVAL=1000
 NUM_EPISODES_PHASE1=20000
 RANDOM_INIT_PHASE1="--random_init"
 ENTROPY_ADAPTIVE_PHASE1="--no-entropy_adaptive"
-ENTROPY_COEF_PHASE1=250
+ENTROPY_COEF_PHASE1=0
 
 # --- Фаза 2 ---
 NUM_EPISODES_PHASE2=5000
@@ -60,6 +63,7 @@ echo "  Эпизодов: $NUM_EPISODES_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
@@ -87,6 +91,7 @@ echo "  Загрузка: $MODEL_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \

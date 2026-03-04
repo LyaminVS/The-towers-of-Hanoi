@@ -9,6 +9,9 @@ mkdir -p logs
 # ========== ПАРАМЕТРЫ (как в config/settings.py) ==========
 # Меняй значения здесь, не трогая settings.py
 
+# --- Воспроизводимость ---
+SEED=42  # Seed для воспроизводимости (меняй здесь)
+
 # --- Игра ---
 NUM_DISKS=4
 NUM_STICKS=3
@@ -60,6 +63,7 @@ echo "  Эпизодов: $NUM_EPISODES_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
@@ -87,6 +91,7 @@ echo "  Загрузка: $MODEL_PHASE1"
 echo ""
 
 python run/train.py \
+    --seed "$SEED" \
     --num_disks "$NUM_DISKS" \
     --num_sticks "$NUM_STICKS" \
     --agent_method "$AGENT_METHOD" \
