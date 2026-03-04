@@ -182,11 +182,6 @@ This allows the agent to specialize its policy for the original puzzle setup.
 
 ---
 
-# Running the Project
-
-Training can be launched using the provided scripts.
-
-Example:
 
 ## 3) Training with REINFORCE + Baseline
 
@@ -196,7 +191,7 @@ REINFORCE with baseline reduces the variance of the policy gradient estimator wi
 For any state-dependent function $b(s_t)$ the following identity holds:
 
 $$
-\mathbb{E}_{\pi_\theta}\left[\nabla_\theta \log \pi_\theta(A_t\mid S_t)\, b(S_t)\right] = 0,
+\mathbb{E}_{\pi_\theta}\left[\nabla_\theta \log \pi_\theta(A_t\mid S_t)\, b(S_t)\right] = 0
 $$
 
 so subtracting $b(S_t)$ from the return leaves the gradient expectation unchanged while reducing its variance (hopefully).
@@ -219,7 +214,7 @@ $$
 \left[
 \sum_{t=0}^{T}
 \nabla_\theta \log \pi_\theta(A_t\mid S_t)\, A_t
-\right].
+\right]
 $$
 
 ### State Encoding
@@ -230,7 +225,7 @@ $(p_0, \ldots, p_{n-1})$ (0-indexed, $p_i \in \{0,1,2\}$).
 We map it to a unique integer index via a mixed-radix encoding:
 
 $$
-\text{idx}(s) = \sum_{i=0}^{n-1} p_i \cdot P^{i},
+\text{idx}(s) = \sum_{i=0}^{n-1} p_i \cdot P^{i}
 $$
 
 where $P = 3$ is the number of pegs.
@@ -243,19 +238,19 @@ The baseline $\hat{V}$ is a table of size $P^n$, recomputed from scratch before 
 
 **Algorithm:**
 
-1. Set $V[i] = 0$, $\; c[i] = 0$ for all $i \in \{0, \ldots, P^n - 1\}$.
+1. Set $V[i] = 0$, $ c[i] = 0$ for all $i \in \{0, \ldots, P^n - 1\}$
 2. For each trajectory $\tau$ in the history buffer (oldest to newest):
    - For each pair $(s_t,\, G_t)$ in $\tau$:
 
 $$
 V[\text{idx}(s_t)]
-\;\mathrel{+}=\;
+\mathrel{+}=
 \frac{G_t - V[\text{idx}(s_t)]}{c[\text{idx}(s_t)] + 1} \newline
 $$
 
 $$
 c[\text{idx}(s_t)]
-\;\mathrel{+}=\; 1.
+\mathrel{+}= 1
 $$
 
 3. Return $V$.
@@ -266,3 +261,8 @@ This is an **incremental mean**: on completion, $V[\text{idx}(s)]$ equals the un
 
 The reward function, discount factor $\gamma$, policy network architecture, optimizer, entropy regularisation coefficient, and all other hyperparameters are **identical** to those used for the plain REINFORCE agent (Section 2).
 The only structural difference is the subtraction of $\hat{V}(s_t)$ from each return realization $g_t$ before computing the policy loss.
+
+
+# Running the Project 
+
+Watch LAUNCH.md 🐳🐳🐳
