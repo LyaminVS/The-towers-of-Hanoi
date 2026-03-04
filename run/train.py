@@ -14,6 +14,7 @@ from agent import create_agent
 from training.trainer import train
 from training.logger import setup_logger, log_message
 from utils.params import save_history
+from utils.params import set_seed
 
 def parse_args() -> object:
     parser = argparse.ArgumentParser(description="Train Tower of Hanoi agent")
@@ -84,6 +85,7 @@ def parse_args() -> object:
     parser.add_argument("--trpo_max_grad_norm_cg", type=float, default=None, help="TRPO grad norm cap before CG")
     parser.add_argument("--trpo_entropy_coef", type=float, default=None, help="TRPO entropy coefficient")
     parser.add_argument("--trpo_damping", type=float, default=None, help="TRPO (H + damping*I) damping")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     return parser.parse_args()
 
 
@@ -147,6 +149,8 @@ def main():
         settings.TRPO_DAMPING = args.trpo_damping
     if args.no_entropy_adaptive:
         settings.REINFORCE_ENTROPY_ADAPTIVE = False
+
+    set_seed(args.seed)
 
     # 1. Настройка логгера (из settings.py)
     setup_logger(

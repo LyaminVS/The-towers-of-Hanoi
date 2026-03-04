@@ -1,9 +1,4 @@
-# Tower of Hanoi RL — зависимости
 # Python: 3.10+
-# Установка: pip install -r requirements.txt
-# PyTorch с GPU: https://pytorch.org/get-started/locally/
-
-# Ядро обучения
 torch>=2.0.0
 numpy>=1.24.0
 scipy>=1.10.0
@@ -13,5 +8,10 @@ pygame>=2.5.0
 Pillow>=9.0.0
 matplotlib>=3.7.0
 
-# Тесты (опционально)
+# Jupyter Notebook для экспериментов
+jupyter
+notebook
+ipykernel
+
+# Тесты
 pytest>=7.0.0
